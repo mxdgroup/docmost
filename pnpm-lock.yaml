@@ -37,7 +37,7 @@ overrides:
   brace-expansion@^5: 5.0.9
   '@xmldom/xmldom': 0.8.13
   handlebars: 4.7.9
-  axios: 1.16.0
+  axios: 1.18.0
   langsmith: 0.7.0
   follow-redirects: 1.16.0
   protobufjs: 7.5.8
@@ -242,7 +242,7 @@ importers:
     devDependencies:
       '@nx/js':
         specifier: 22.6.1
-        version: 22.6.1(@babel/traverse@7.28.5(supports-color@8.1.1))(nx@22.6.1)(supports-color@8.1.1)
+        version: 22.6.1(@babel/traverse@7.28.5(supports-color@8.1.1))(nx@22.6.1(supports-color@8.1.1))(supports-color@8.1.1)
       '@types/bytes':
         specifier: 3.1.5
         version: 3.1.5
@@ -257,7 +257,7 @@ importers:
         version: 9.2.3
       nx:
         specifier: 22.6.1
-        version: 22.6.1
+        version: 22.6.1(supports-color@8.1.1)
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -352,8 +352,8 @@ importers:
         specifier: 1.1.0
         version: 1.1.0
       axios:
-        specifier: 1.16.0
-        version: 1.16.0(debug@4.4.3(supports-color@8.1.1))
+        specifier: 1.18.0
+        version: 1.18.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       blueimp-load-image:
         specifier: 5.16.0
         version: 5.16.0
@@ -771,7 +771,7 @@ importers:
         version: 3.4.8
       postmark:
         specifier: 4.0.7
-        version: 4.0.7
+        version: 4.0.7(supports-color@8.1.1)
       react:
         specifier: 19.2.7
         version: 19.2.7
@@ -807,7 +807,7 @@ importers:
         version: 1.3.1
       typesense:
         specifier: 3.0.5
-        version: 3.0.5(@babel/runtime@7.29.2)
+        version: 3.0.5(@babel/runtime@7.29.2)(supports-color@8.1.1)
       undici:
         specifier: 7.29.0
         version: 7.29.0
@@ -5366,6 +5366,10 @@ packages:
     resolution: {integrity: sha512-4B/qKCfeE/ODUaAUpSwfzazo5x29WD4r3vXiWsB7I2mSDAihwEqKO+g8GELZUQSSAo5e1XTYh3ZVfLyxBc12nA==}
     engines: {node: '>= 10.0.0'}
 
+  agent-base@6.0.2:
+    resolution: {integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==}
+    engines: {node: '>= 6.0.0'}
+
   agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
@@ -5540,8 +5544,8 @@ packages:
   avvio@9.1.0:
     resolution: {integrity: sha512-fYASnYi600CsH/j9EQov7lECAniYiBFiiAtBNuZYLA2leLe9qOvZzqYHFjtIj6gD2VMoMLP14834LFWvr4IfDw==}
 
-  axios@1.16.0:
-    resolution: {integrity: sha512-6hp5CwvTPlN2A31g5dxnwAX0orzM7pmCRDLnZSX772mv8WDqICwFjowHuPs04Mc8deIld1+ejhtaMn5vp6b+1w==}
+  axios@1.18.0:
+    resolution: {integrity: sha512-E32NzpYKp++W7XRe52rHiXV2ehxmh3wbdgO7MHeFM+vqxLBYHzt0ElkiImtOBxtOmyp0yoC8C6uESVV84Y2/hw==}
 
   babel-jest@30.3.0:
     resolution: {integrity: sha512-gRpauEU2KRrCox5Z296aeVHR4jQ98BCnu0IO332D/xpHNOsIH/bgSRk9k6GbKIbBw8vFeN6ctuu6tV8WOyVfYQ==}
@@ -7126,6 +7130,10 @@ packages:
   http-proxy-agent@7.0.2:
     resolution: {integrity: sha512-T1gkAiYYDWYx3V5Bmyu7HcfcvL7mUrTWiM6yOfa3PIphViJ/gFPbvidQ+veqSOHci/PxBcDabeUNCzpOODJZig==}
     engines: {node: '>= 14'}
+
+  https-proxy-agent@5.0.1:
+    resolution: {integrity: sha512-dFcAjpTQFgoLMzC2VwU+C/CbS7uRL0lWmxDITmqm7C+7F0Odmj6s9l6alZc6AELXhrnggM2CeWSXHGOdX2YtwA==}
+    engines: {node: '>= 6'}
 
   https-proxy-agent@7.0.6:
     resolution: {integrity: sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==}
@@ -13296,18 +13304,18 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@nx/devkit@22.6.1(nx@22.6.1)':
+  '@nx/devkit@22.6.1(nx@22.6.1(supports-color@8.1.1))':
     dependencies:
       '@zkochan/js-yaml': 0.0.7
       ejs: 3.1.10
       enquirer: 2.3.6
       minimatch: 10.2.3
-      nx: 22.6.1
+      nx: 22.6.1(supports-color@8.1.1)
       semver: 7.7.4
       tslib: 2.8.1
       yargs-parser: 21.1.1
 
-  '@nx/js@22.6.1(@babel/traverse@7.28.5(supports-color@8.1.1))(nx@22.6.1)(supports-color@8.1.1)':
+  '@nx/js@22.6.1(@babel/traverse@7.28.5(supports-color@8.1.1))(nx@22.6.1(supports-color@8.1.1))(supports-color@8.1.1)':
     dependencies:
       '@babel/core': 7.28.5(supports-color@8.1.1)
       '@babel/plugin-proposal-decorators': 7.23.7(@babel/core@7.28.5(supports-color@8.1.1))
@@ -13316,8 +13324,8 @@ snapshots:
       '@babel/preset-env': 7.23.8(@babel/core@7.28.5(supports-color@8.1.1))(supports-color@8.1.1)
       '@babel/preset-typescript': 7.23.3(@babel/core@7.28.5(supports-color@8.1.1))(supports-color@8.1.1)
       '@babel/runtime': 7.29.2
-      '@nx/devkit': 22.6.1(nx@22.6.1)
-      '@nx/workspace': 22.6.1
+      '@nx/devkit': 22.6.1(nx@22.6.1(supports-color@8.1.1))
+      '@nx/workspace': 22.6.1(supports-color@8.1.1)
       '@zkochan/js-yaml': 0.0.7
       babel-plugin-const-enum: 1.2.0(@babel/core@7.28.5(supports-color@8.1.1))(supports-color@8.1.1)
       babel-plugin-macros: 3.1.0
@@ -13373,13 +13381,13 @@ snapshots:
   '@nx/nx-win32-x64-msvc@22.6.1':
     optional: true
 
-  '@nx/workspace@22.6.1':
+  '@nx/workspace@22.6.1(supports-color@8.1.1)':
     dependencies:
-      '@nx/devkit': 22.6.1(nx@22.6.1)
+      '@nx/devkit': 22.6.1(nx@22.6.1(supports-color@8.1.1))
       '@zkochan/js-yaml': 0.0.7
       chalk: 4.1.2
       enquirer: 2.3.6
-      nx: 22.6.1
+      nx: 22.6.1(supports-color@8.1.1)
       picomatch: 4.0.4
       semver: 7.7.4
       tslib: 2.8.1
@@ -13388,6 +13396,7 @@ snapshots:
       - '@swc-node/register'
       - '@swc/core'
       - debug
+      - supports-color
 
   '@opentelemetry/api@1.9.0': {}
 
@@ -15577,6 +15586,12 @@ snapshots:
 
   address@1.2.2: {}
 
+  agent-base@6.0.2(supports-color@8.1.1):
+    dependencies:
+      debug: 4.4.3(supports-color@8.1.1)
+    transitivePeerDependencies:
+      - supports-color
+
   agent-base@7.1.4: {}
 
   ai-sdk-ollama@3.8.1(ai@6.0.134(zod@4.3.6))(zod@4.3.6):
@@ -15764,13 +15779,15 @@ snapshots:
       '@fastify/error': 4.0.0
       fastq: 1.17.1
 
-  axios@1.16.0(debug@4.4.3(supports-color@8.1.1)):
+  axios@1.18.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1):
     dependencies:
       follow-redirects: 1.16.0(debug@4.4.3(supports-color@8.1.1))
       form-data: 4.0.6
+      https-proxy-agent: 5.0.1(supports-color@8.1.1)
       proxy-from-env: 2.1.0
     transitivePeerDependencies:
       - debug
+      - supports-color
 
   babel-jest@30.3.0(@babel/core@7.28.5(supports-color@8.1.1))(supports-color@8.1.1):
     dependencies:
@@ -17473,7 +17490,7 @@ snapshots:
       call-bound: 1.0.4
       define-properties: 1.2.1
       functions-have-names: 1.2.3
-      hasown: 2.0.2
+      hasown: 2.0.4
       is-callable: 1.2.7
 
   functions-have-names@1.2.3: {}
@@ -17685,6 +17702,13 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  https-proxy-agent@5.0.1(supports-color@8.1.1):
+    dependencies:
+      agent-base: 6.0.2(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@8.1.1)
+    transitivePeerDependencies:
+      - supports-color
+
   https-proxy-agent@7.0.6(supports-color@8.1.1):
     dependencies:
       agent-base: 7.1.4
@@ -17867,7 +17891,7 @@ snapshots:
       call-bound: 1.0.4
       gopd: 1.2.0
       has-tostringtag: 1.0.2
-      hasown: 2.0.2
+      hasown: 2.0.4
 
   is-set@2.0.3: {}
 
@@ -19044,14 +19068,14 @@ snapshots:
 
   nwsapi@2.2.16: {}
 
-  nx@22.6.1:
+  nx@22.6.1(supports-color@8.1.1):
     dependencies:
       '@ltd/j-toml': 1.38.0
       '@napi-rs/wasm-runtime': 0.2.4
       '@yarnpkg/lockfile': 1.1.0
       '@yarnpkg/parsers': 3.0.2
       '@zkochan/js-yaml': 0.0.7
-      axios: 1.16.0(debug@4.4.3(supports-color@8.1.1))
+      axios: 1.18.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       cli-cursor: 3.1.0
       cli-spinners: 2.6.1
       cliui: 8.0.1
@@ -19095,6 +19119,7 @@ snapshots:
       '@nx/nx-win32-x64-msvc': 22.6.1
     transitivePeerDependencies:
       - debug
+      - supports-color
 
   nypm@0.6.6:
     dependencies:
@@ -19593,11 +19618,12 @@ snapshots:
       query-selector-shadow-dom: 1.0.1
       web-vitals: 5.3.0
 
-  postmark@4.0.7:
+  postmark@4.0.7(supports-color@8.1.1):
     dependencies:
-      axios: 1.16.0(debug@4.4.3(supports-color@8.1.1))
+      axios: 1.18.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
     transitivePeerDependencies:
       - debug
+      - supports-color
 
   preact@10.29.2: {}
 
@@ -20871,14 +20897,15 @@ snapshots:
 
   typescript@5.9.3: {}
 
-  typesense@3.0.5(@babel/runtime@7.29.2):
+  typesense@3.0.5(@babel/runtime@7.29.2)(supports-color@8.1.1):
     dependencies:
       '@babel/runtime': 7.29.2
-      axios: 1.16.0(debug@4.4.3(supports-color@8.1.1))
+      axios: 1.18.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       loglevel: 1.9.2
       tslib: 2.8.1
     transitivePeerDependencies:
       - debug
+      - supports-color
 
   ufo@1.6.1: {}
 
