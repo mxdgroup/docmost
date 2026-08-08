@@ -1,0 +1,129 @@
+# MxD fork image build — see MXD-FORK.md for the fork policy this implements.
+#
+# Builds ghcr.io/mxdgroup/docmost from this repo's Dockerfile (unchanged from
+# upstream), scans it BEFORE pushing (fail on fixable HIGH/CRITICAL), attaches
+# an SBOM, signs the pushed digest (keyless cosign), and records the base-image
+# digest in the job summary so a build is attributable to its inputs.
+#
+# Triggers: pushes to mxd-main (sha-tagged images) and v*-mxd.* tags (release
+# images production consumes). Production only ever pins v*-mxd.* tags by
+# digest — tagging IS the promote step; an unreviewed commit cannot reach a
+# production tag because mxd-main is branch-protected.
+name: mxd-image
+
+on:
+  push:
+    branches: [mxd-main]
+    tags: ["v*-mxd.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write # cosign keyless signing
+
+jobs:
+  ee-clean-room:
+    # Clean-room guard (plan Unit 8 / R7): fork commits must never modify EE
+    # paths, and non-EE changes must never import from them.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fork commits must not touch EE paths
+        run: |
+          git fetch --no-tags origin +refs/tags/v0.95.0:refs/tags/v0.95.0 2>/dev/null || git fetch --tags https://github.com/docmost/docmost.git v0.95.0 || true
+          BASE=$(git merge-base v0.95.0 HEAD)
+          CHANGED=$(git diff --name-only "$BASE"..HEAD)
+          echo "$CHANGED" | grep -E '^(apps/(client|server)/src/ee/|packages/ee/|packages/base-formula/)' && {
+            echo "::error::Fork commits modify EE-licensed paths"; exit 1; } || true
+          # New/changed non-EE files must not import from EE paths
+          FAIL=0
+          for f in $CHANGED; do
+            case "$f" in
+              apps/client/src/ee/*|apps/server/src/ee/*|packages/ee/*|packages/base-formula/*) continue ;;
+            esac
+            [ -f "$f" ] || continue
+            case "$f" in
+              *.ts|*.tsx|*.js|*.jsx)
+                grep -nE "from ['\"].*(/ee/|@docmost/ee|base-formula)" "$f" && { echo "::error file=$f::imports from EE path"; FAIL=1; } || true ;;
+            esac
+          done
+          exit $FAIL
+
+  build:
+    runs-on: ubuntu-latest
+    needs: ee-clean-room
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/mxdgroup/docmost
+          tags: |
+            type=ref,event=tag
+            type=sha,prefix=mxd-main-,enable=${{ github.ref == 'refs/heads/mxd-main' }}
+
+      # Build once into the local daemon so the scan gates the push.
+      - name: Build (local, for scan)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ghcr.io/mxdgroup/docmost:scan-candidate
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan before push (fail on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/mxdgroup/docmost:scan-candidate
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+
+      # Same build inputs -> cache hit -> effectively a tag-and-push.
+      - name: Push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+
+      - name: SBOM (attached as workflow artifact)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/mxdgroup/docmost@${{ steps.push.outputs.digest }}
+          artifact-name: sbom-${{ github.sha }}.spdx.json
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Sign pushed digest (keyless)
+        run: cosign sign --yes ghcr.io/mxdgroup/docmost@${{ steps.push.outputs.digest }}
+
+      - name: Record digests in job summary
+        run: |
+          {
+            echo "## Image build record"
+            echo "- pushed digest: \`${{ steps.push.outputs.digest }}\`"
+            echo "- base image (from Dockerfile FROM):"
+            grep -m2 '^FROM' Dockerfile | sed 's/^/  - `/;s/$/`/'
+            docker buildx imagetools inspect ghcr.io/mxdgroup/docmost@${{ steps.push.outputs.digest }} | sed -n '1,8p' | sed 's/^/    /'
+          } >> "$GITHUB_STEP_SUMMARY"
