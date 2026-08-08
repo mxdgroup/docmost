@@ -6,6 +6,10 @@ import { Container } from "@mantine/core";
 import React, { useEffect } from "react";
 import ReadonlyPageEditor from "@/features/editor/readonly-page-editor.tsx";
 import SharedPageCollabEditor from "@/features/share/components/shared-page-collab-editor.tsx";
+import SharedPageComments from "@/features/share/components/shared-page-comments.tsx";
+import {
+  isShareGuestCommentsEnabled,
+} from "@/lib/config.ts";
 import { isShareEditEnabled } from "@/lib/config.ts";
 import { extractPageSlugId } from "@/lib";
 import { Error404 } from "@/components/ui/error-404.tsx";
@@ -83,6 +87,13 @@ export default function SharedPage() {
             shareId={data.share.id}
           />
         )}
+        {(data.share.mode === "comment" || data.share.mode === "edit") &&
+          (isShareGuestCommentsEnabled() || isShareEditEnabled()) && (
+            <SharedPageComments
+              shareId={data.share.id}
+              pageId={data.page.id}
+            />
+          )}
       </Container>
 
       {data && !shareId && !(data.features?.length > 0) && <ShareBranding />}

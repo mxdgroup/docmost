@@ -206,6 +206,7 @@ export interface Comments {
   creatorId: string | null;
   deletedAt: Timestamp | null;
   editedAt: Timestamp | null;
+  guestName: string | null;
   id: Generated<string>;
   lastEditedById: string | null;
   pageId: string;

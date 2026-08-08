@@ -72,3 +72,27 @@ export class ShareCollabTokenDto {
   @IsNotEmpty()
   pageId: string;
 }
+
+export class ShareCommentsListDto {
+  @IsString()
+  @IsNotEmpty()
+  shareId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  pageId: string;
+}
+
+export class ShareGuestCommentDto extends ShareCommentsListDto {
+  @IsString()
+  @IsNotEmpty()
+  content: string;
+
+  @IsString()
+  @IsNotEmpty()
+  guestName: string;
+
+  @IsOptional()
+  @IsUUID()
+  parentCommentId?: string;
+}

@@ -145,6 +145,73 @@ export class CommentService {
     return comment;
   }
 
+  // MXD: anonymous comment on a shared page. Content arrives ALREADY
+  // sanitized by the share layer's allowlist (which also strips mention
+  // nodes, so guests can't trigger mention notifications). No user: no
+  // watcher registration, no comment mark in the ydoc, no mention jobs —
+  // only the reply notification to the parent author and page watchers.
+  async createGuestComment(
+    opts: {
+      page: Page;
+      workspaceId: string;
+      guestName: string;
+      sanitizedContent: any;
+    },
+    dto: { parentCommentId?: string; selection?: string; type?: string },
+  ) {
+    const { page, workspaceId, guestName, sanitizedContent } = opts;
+
+    if (dto.parentCommentId) {
+      const parentComment = await this.commentRepo.findById(
+        dto.parentCommentId,
+      );
+      if (!parentComment || parentComment.pageId !== page.id) {
+        throw new BadRequestException('Parent comment not found');
+      }
+      if (parentComment.parentCommentId !== null) {
+        throw new BadRequestException('You cannot reply to a reply');
+      }
+    }
+
+    const inserted = await this.commentRepo.insertComment({
+      pageId: page.id,
+      content: sanitizedContent,
+      selection: dto?.selection?.substring(0, 250) ?? null,
+      type: dto.type ?? 'page',
+      parentCommentId: dto?.parentCommentId,
+      creatorId: null,
+      guestName,
+      workspaceId,
+      spaceId: page.spaceId,
+    });
+
+    const comment = await this.commentRepo.findById(inserted.id, {
+      includeCreator: true,
+      includeResolvedBy: true,
+    });
+
+    const isReply = !!dto.parentCommentId;
+    await this.queueCommentNotification(
+      sanitizedContent, // mention-free by construction
+      [],
+      comment.id,
+      page.id,
+      page.spaceId,
+      workspaceId,
+      null,
+      !isReply,
+      dto.parentCommentId,
+    );
+
+    this.wsService.emitCommentEvent(page.spaceId, page.id, {
+      operation: 'commentCreated',
+      pageId: page.id,
+      comment,
+    });
+
+    return comment;
+  }
+
   async findByPageId(
     pageId: string,
     pagination: PaginationOptions,
@@ -213,7 +280,7 @@ export class CommentService {
     pageId: string,
     spaceId: string,
     workspaceId: string,
-    actorId: string,
+    actorId: string | null,
     notifyWatchers: boolean,
     parentCommentId?: string,
   ) {

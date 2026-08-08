@@ -26,7 +26,11 @@ import { validate as isValidUUID } from 'uuid';
 import { sql } from 'kysely';
 import { TransclusionService } from '../page/transclusion/transclusion.service';
 import { TransclusionLookup } from '../page/transclusion/transclusion.types';
-import { ShareMode, normalizeShareMode } from './share-mode';
+import {
+  ShareMode,
+  normalizeShareMode,
+  shareModeAllows,
+} from './share-mode';
 import { EnvironmentService } from '../../integrations/environment/environment.service';
 import { ForbiddenException } from '@nestjs/common';
 
@@ -196,6 +200,63 @@ export class ShareService {
       workspaceId,
     });
     return { token };
+  }
+
+  // MXD: shared gatekeeper for guest comment read/write on a shared page.
+  // Same defense-in-depth ladder as the collab-token mint: flags, share
+  // liveness, capability (edit implies comment), sharing-allowed, page
+  // liveness, authoritative scope, page-level restrictions.
+  async validateGuestCommentAccess(
+    shareIdOrKey: string,
+    pageId: string,
+    workspaceId: string,
+  ): Promise<{ share: any; page: any }> {
+    const share = await this.shareRepo.findById(shareIdOrKey);
+    if (!share || share.workspaceId !== workspaceId || share.deletedAt) {
+      throw new NotFoundException('Share not found');
+    }
+
+    const mode = normalizeShareMode(share.mode);
+    if (!shareModeAllows(mode, ShareMode.COMMENT)) {
+      throw new ForbiddenException('This link does not allow comments');
+    }
+    // Each elevated capability rides its own kill switch: comment-mode
+    // shares need the guest-comments flag; edit-mode shares (which imply
+    // comment) need the share-edit flag.
+    const flagOk =
+      mode === ShareMode.EDIT
+        ? this.environmentService.isShareEditEnabled()
+        : this.environmentService.isShareGuestCommentsEnabled();
+    if (!flagOk) {
+      throw new ForbiddenException('Guest comments are disabled');
+    }
+
+    const sharingAllowed = await this.isSharingAllowed(
+      workspaceId,
+      share.spaceId,
+    );
+    if (!sharingAllowed) {
+      throw new NotFoundException('Share not found');
+    }
+
+    const page = await this.pageRepo.findById(pageId);
+    if (!page || page.deletedAt || page.workspaceId !== workspaceId) {
+      throw new NotFoundException('Page not found');
+    }
+
+    const inScope = await this.shareRepo.isPageWithinShareScope(share, page.id);
+    if (!inScope) {
+      throw new ForbiddenException('Page is not covered by this share');
+    }
+
+    const restricted = await this.pagePermissionRepo.hasRestrictedAncestor(
+      page.id,
+    );
+    if (restricted) {
+      throw new ForbiddenException('Page is restricted');
+    }
+
+    return { share, page };
   }
 
   // MXD: rotate the bearer key. The old URL dies immediately; mode and all
