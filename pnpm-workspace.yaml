@@ -1,3 +1,7 @@
+# pnpm 11 no longer reads .npmrc's shamefully-hoist; upstream's build relies
+# on the hoisted layout (editor-ext imports prosemirror-* via hoisting).
+shamefullyHoist: true
+
 packages:
   - 'apps/*'
   - 'packages/*'
