@@ -1,6 +1,8 @@
 export enum JwtType {
   ACCESS = 'access',
   COLLAB = 'collab',
+  // MXD: share-scoped anonymous collab session (no user id — ever)
+  SHARE_COLLAB = 'share_collab',
   EXCHANGE = 'exchange',
   ATTACHMENT = 'attachment',
   MFA_TOKEN = 'mfa_token',
@@ -20,6 +22,15 @@ export type JwtCollabPayload = {
   sub: string;
   workspaceId: string;
   type: 'collab';
+};
+
+// MXD: carries the share and target page only — never a user id. The collab
+// auth extension re-validates the share and scope server-side on connect.
+export type JwtShareCollabPayload = {
+  shareId: string;
+  pageId: string;
+  workspaceId: string;
+  type: 'share_collab';
 };
 
 export type JwtExchangePayload = {

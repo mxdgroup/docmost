@@ -1,0 +1,38 @@
+/* MXD: Bullet list marker cycling based on nesting depth.
+ *
+ * Browsers already cycle disc/circle/square by default, but nothing in the
+ * app guaranteed it — any future global `ul { list-style-type: ... }` reset
+ * would silently flatten every nesting level to the same marker. This makes
+ * the cycle explicit and deterministic, mirroring ordered-list.css (which
+ * upstream added for exactly the same reason on the ordered side). */
+ul,
+ul ul ul ul,
+ul ul ul ul ul ul ul,
+ul ul ul ul ul ul ul ul ul ul {
+  list-style-type: disc;
+}
+
+ul ul,
+ul ul ul ul ul,
+ul ul ul ul ul ul ul ul,
+ul ul ul ul ul ul ul ul ul ul ul {
+  list-style-type: circle;
+}
+
+ul ul ul,
+ul ul ul ul ul ul,
+ul ul ul ul ul ul ul ul ul,
+ul ul ul ul ul ul ul ul ul ul ul ul {
+  list-style-type: square;
+}
+
+/* Task lists opt out of markers entirely; keep their reset winning. */
+ul[data-type='taskList'],
+ul[data-type='taskList'] ul[data-type='taskList'] {
+  list-style-type: none;
+}
+
+ul {
+  list-style-position: outside;
+  margin-left: 0.25rem;
+}

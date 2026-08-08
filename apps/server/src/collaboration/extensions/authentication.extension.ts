@@ -14,7 +14,17 @@ import { findHighestUserSpaceRole } from '@docmost/db/repos/space/utils';
 import { SpaceRole } from '../../common/helpers/types/permission';
 import { isUserDisabled } from '../../common/helpers';
 import { getPageId } from '../collaboration.util';
-import { JwtCollabPayload, JwtType } from '../../core/auth/dto/jwt-payload';
+import {
+  JwtCollabPayload,
+  JwtShareCollabPayload,
+  JwtType,
+} from '../../core/auth/dto/jwt-payload';
+import { ShareRepo } from '@docmost/db/repos/share/share.repo';
+import {
+  ShareMode,
+  normalizeShareMode,
+} from '../../core/share/share-mode';
+import { EnvironmentService } from '../../integrations/environment/environment.service';
 
 @Injectable()
 export class AuthenticationExtension implements Extension {
@@ -26,6 +36,8 @@ export class AuthenticationExtension implements Extension {
     private pageRepo: PageRepo,
     private readonly spaceMemberRepo: SpaceMemberRepo,
     private readonly pagePermissionRepo: PagePermissionRepo,
+    private readonly shareRepo: ShareRepo,
+    private readonly environmentService: EnvironmentService,
   ) {}
 
   async onAuthenticate(data: onAuthenticatePayload) {
@@ -37,7 +49,11 @@ export class AuthenticationExtension implements Extension {
     try {
       jwtPayload = await this.tokenService.verifyJwt(token, JwtType.COLLAB);
     } catch (error) {
-      throw new UnauthorizedException('Invalid collab token');
+      // MXD: not a user collab token — try the anonymous share branch. The
+      // branch is only entered for tokens whose type claim is SHARE_COLLAB;
+      // everything about the share is re-validated server-side here, not
+      // trusted from mint time.
+      return this.authenticateShareCollab(data, pageId);
     }
 
     const userId = jwtPayload.sub;
@@ -105,6 +121,87 @@ export class AuthenticationExtension implements Extension {
 
     return {
       user,
+    };
+  }
+
+  // MXD: anonymous share-scoped session. No user is ever attached to the
+  // connection context; the persistence layer treats a missing user as
+  // "preserve existing attribution".
+  private async authenticateShareCollab(
+    data: onAuthenticatePayload,
+    pageId: string,
+  ) {
+    const { token } = data;
+
+    let payload: JwtShareCollabPayload;
+    try {
+      payload = await this.tokenService.verifyJwt(
+        token,
+        JwtType.SHARE_COLLAB,
+      );
+    } catch {
+      throw new UnauthorizedException('Invalid collab token');
+    }
+
+    if (!this.environmentService.isShareEditEnabled()) {
+      throw new UnauthorizedException('Editable public links are disabled');
+    }
+
+    // The token is scoped to one page at mint time; the ws document must be
+    // that page. This blocks replay of a token against sibling documents.
+    if (payload.pageId !== pageId) {
+      this.logger.warn(
+        `Share collab token page mismatch: token=${payload.pageId} doc=${pageId}`,
+      );
+      throw new UnauthorizedException();
+    }
+
+    const share = await this.shareRepo.findById(payload.shareId);
+    if (
+      !share ||
+      share.deletedAt ||
+      share.workspaceId !== payload.workspaceId ||
+      normalizeShareMode(share.mode) !== ShareMode.EDIT
+    ) {
+      // Revoked, downgraded, or rotated shares cut off editors here on the
+      // next (re)connect — acceptable staleness = token TTL (10m).
+      throw new UnauthorizedException();
+    }
+
+    const page = await this.pageRepo.findById(pageId);
+    if (!page || page.workspaceId !== share.workspaceId) {
+      throw new NotFoundException('Page not found');
+    }
+    if (page.deletedAt) {
+      throw new UnauthorizedException();
+    }
+
+    // Same authoritative scope check the mint endpoint used — re-run, not
+    // trusted from the token (the share's pageId/includeSubPages may have
+    // changed since mint).
+    const inScope = await this.shareRepo.isPageWithinShareScope(share, pageId);
+    if (!inScope) {
+      this.logger.warn(
+        `Share collab scope escape blocked: share=${share.id} page=${pageId}`,
+      );
+      throw new UnauthorizedException();
+    }
+
+    // Defense in depth: restricted pages are never editable anonymously,
+    // even inside a shared subtree.
+    const restricted =
+      await this.pagePermissionRepo.hasRestrictedAncestor(pageId);
+    if (restricted) {
+      throw new UnauthorizedException();
+    }
+
+    this.logger.debug(
+      `Anonymous share editor authenticated: share=${share.id} page=${pageId}`,
+    );
+
+    return {
+      user: null,
+      anonymousShare: { shareId: share.id, pageId },
     };
   }
 }

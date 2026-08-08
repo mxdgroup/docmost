@@ -1,11 +1,14 @@
 import { IPage } from "@/features/page/types/page.types.ts";
 
+export type ShareMode = "view" | "comment" | "edit";
+
 export interface IShare {
   id: string;
   key: string;
   pageId: string;
   includeSubPages: boolean;
   searchIndexing: boolean;
+  mode?: ShareMode;
   creatorId: string;
   spaceId: string;
   workspaceId: string;
@@ -60,6 +63,7 @@ export interface ICreateShare {
   pageId?: string;
   includeSubPages?: boolean;
   searchIndexing?: boolean;
+  mode?: ShareMode;
 }
 
 export type IUpdateShare = ICreateShare & { shareId: string; pageId?: string };

@@ -1,10 +1,12 @@
 import {
   IsBoolean,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
 } from 'class-validator';
+import { ShareMode } from '../share-mode';
 
 export class CreateShareDto {
   @IsString()
@@ -18,6 +20,10 @@ export class CreateShareDto {
   @IsOptional()
   @IsBoolean()
   searchIndexing: boolean;
+
+  @IsOptional()
+  @IsIn([ShareMode.VIEW, ShareMode.COMMENT, ShareMode.EDIT])
+  mode?: string;
 }
 
 export class UpdateShareDto extends CreateShareDto {
@@ -55,4 +61,38 @@ export class SharePageIdDto {
   @IsString()
   @IsNotEmpty()
   pageId: string;
+}
+
+export class ShareCollabTokenDto {
+  @IsString()
+  @IsNotEmpty()
+  shareId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  pageId: string;
+}
+
+export class ShareCommentsListDto {
+  @IsString()
+  @IsNotEmpty()
+  shareId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  pageId: string;
+}
+
+export class ShareGuestCommentDto extends ShareCommentsListDto {
+  @IsString()
+  @IsNotEmpty()
+  content: string;
+
+  @IsString()
+  @IsNotEmpty()
+  guestName: string;
+
+  @IsOptional()
+  @IsUUID()
+  parentCommentId?: string;
 }

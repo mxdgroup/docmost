@@ -214,6 +214,21 @@ export class EnvironmentService {
     return !this.isCloud();
   }
 
+  // MXD fork flags (default off — features ship dark; see MXD-FORK.md)
+  isShareEditEnabled(): boolean {
+    const value = this.configService
+      .get<string>('SHARE_EDIT_ENABLED', 'false')
+      .toLowerCase();
+    return value === 'true';
+  }
+
+  isShareGuestCommentsEnabled(): boolean {
+    const value = this.configService
+      .get<string>('SHARE_GUEST_COMMENTS_ENABLED', 'false')
+      .toLowerCase();
+    return value === 'true';
+  }
+
   getStripePublishableKey(): string {
     return this.configService.get<string>('STRIPE_PUBLISHABLE_KEY');
   }

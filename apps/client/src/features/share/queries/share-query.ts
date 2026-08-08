@@ -20,6 +20,7 @@ import {
 import {
   createShare,
   deleteShare,
+  rotateShareKey,
   getSharedPageTree,
   getShareForPage,
   getShareInfo,
@@ -126,6 +127,32 @@ export function useUpdateShareMutation() {
 
       notifications.show({
         message: error?.["response"]?.data?.message || "Share not found",
+        color: "red",
+      });
+    },
+  });
+}
+
+// MXD: rotate the share's bearer key (old link dies instantly).
+export function useRotateShareKeyMutation() {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+
+  return useMutation<IShare, Error, string>({
+    mutationFn: (shareId) => rotateShareKey(shareId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        predicate: (item) =>
+          ["share-for-page", "share-list"].includes(item.queryKey[0] as string),
+      });
+      notifications.show({
+        message: t("Share link rotated. The old link no longer works."),
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        message:
+          error?.["response"]?.data?.message || t("Failed to rotate link"),
         color: "red",
       });
     },

@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  Logger,
+  Req,
   Body,
   Controller,
   ForbiddenException,
@@ -16,12 +18,19 @@ import { AuthWorkspace } from '../../common/decorators/auth-workspace.decorator'
 import { ShareService } from './share.service';
 import {
   CreateShareDto,
+  ShareCollabTokenDto,
+  ShareCommentsListDto,
+  ShareGuestCommentDto,
   ShareIdDto,
   ShareInfoDto,
   SharePageIdDto,
   UpdateShareDto,
 } from './dto/share.dto';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { SHARE_PUBLIC_THROTTLER } from '../../integrations/throttle/throttler-names';
 import { ShareTransclusionLookupDto } from './dto/share-transclusion-lookup.dto';
+import { sanitizeGuestCommentContent } from './guest-comment-content';
+import { CommentService } from '../comment/comment.service';
 import { PageRepo } from '@docmost/db/repos/page/page.repo';
 import { PagePermissionRepo } from '@docmost/db/repos/page/page-permission.repo';
 import { PageAccessService } from '../page/page-access/page-access.service';
@@ -39,8 +48,11 @@ import {
 @UseGuards(JwtAuthGuard)
 @Controller('shares')
 export class ShareController {
+  private readonly logger = new Logger(ShareController.name);
+
   constructor(
     private readonly shareService: ShareService,
+    private readonly commentService: CommentService,
     private readonly shareRepo: ShareRepo,
     private readonly pageRepo: PageRepo,
     private readonly pagePermissionRepo: PagePermissionRepo,
@@ -109,6 +121,105 @@ export class ShareController {
     }
 
     return share;
+  }
+
+  // MXD: anonymous, throttled. Returns a short-lived SHARE_COLLAB token for
+  // an edit-mode share; the ws auth extension re-validates everything again.
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ [SHARE_PUBLIC_THROTTLER]: { ttl: 60_000, limit: 20 } })
+  @HttpCode(HttpStatus.OK)
+  @Post('/collab-token')
+  async mintCollabToken(
+    @Body() dto: ShareCollabTokenDto,
+    @AuthWorkspace() workspace: Workspace,
+    @Req() req: any,
+  ) {
+    const result = await this.shareService.mintShareCollabToken(
+      dto.shareId,
+      dto.pageId,
+      workspace.id,
+    );
+    // Abuse forensics: minimal per-session record (truncated IP — enough to
+    // distinguish one actor from many after an incident, not an identity
+    // system). Retention = log retention.
+    const ip = String(req?.ip ?? '').replace(/[.:][^.:]*$/, '.x');
+    this.logger.log(
+      `share-collab token minted: share=${dto.shareId} page=${dto.pageId} ip=${ip}`,
+    );
+    return result;
+  }
+
+  // MXD: guest comment listing on a shared page (comment/edit modes).
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ [SHARE_PUBLIC_THROTTLER]: { ttl: 60_000, limit: 60 } })
+  @HttpCode(HttpStatus.OK)
+  @Post('/comments')
+  async listGuestComments(
+    @Body() dto: ShareCommentsListDto,
+    @Body() pagination: PaginationOptions,
+    @AuthWorkspace() workspace: Workspace,
+  ) {
+    const { page } = await this.shareService.validateGuestCommentAccess(
+      dto.shareId,
+      dto.pageId,
+      workspace.id,
+    );
+    return this.commentService.findByPageId(page.id, pagination);
+  }
+
+  // MXD: guest comment creation. Body content passes the restricted
+  // allowlist (no embeds/raw HTML/mentions; http(s) links only) before it
+  // ever reaches the comment service.
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ [SHARE_PUBLIC_THROTTLER]: { ttl: 60_000, limit: 10 } })
+  @HttpCode(HttpStatus.OK)
+  @Post('/comments/create')
+  async createGuestComment(
+    @Body() dto: ShareGuestCommentDto,
+    @AuthWorkspace() workspace: Workspace,
+    @Req() req: any,
+  ) {
+    const { page } = await this.shareService.validateGuestCommentAccess(
+      dto.shareId,
+      dto.pageId,
+      workspace.id,
+    );
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(dto.content);
+    } catch {
+      throw new BadRequestException('Invalid comment content');
+    }
+    const sanitized = sanitizeGuestCommentContent(parsed);
+    if (!sanitized) {
+      throw new BadRequestException('Comment content is empty or not allowed');
+    }
+
+    const guestName = dto.guestName.trim().slice(0, 50);
+    if (!guestName) {
+      throw new BadRequestException('Display name is required');
+    }
+
+    const comment = await this.commentService.createGuestComment(
+      {
+        page,
+        workspaceId: workspace.id,
+        guestName,
+        sanitizedContent: sanitized,
+      },
+      { parentCommentId: dto.parentCommentId },
+    );
+
+    const ip = String(req?.ip ?? '').replace(/[.:][^.:]*$/, '.x');
+    this.logger.log(
+      `guest comment created: share=${dto.shareId} page=${dto.pageId} comment=${comment.id} ip=${ip}`,
+    );
+
+    return comment;
   }
 
   @Public()
@@ -215,6 +326,41 @@ export class ShareController {
     await this.pageAccessService.validateCanEdit(page, user);
 
     return this.shareService.updateShare(share.id, updateShareDto);
+  }
+
+  // MXD: rotate the share's bearer key. Old links stop resolving instantly;
+  // mode/settings are preserved. For suspected leaks of elevated links.
+  @HttpCode(HttpStatus.OK)
+  @Post('rotate-key')
+  async rotateKey(@Body() shareIdDto: ShareIdDto, @AuthUser() user: User) {
+    const share = await this.shareRepo.findById(shareIdDto.shareId);
+
+    if (!share) {
+      throw new NotFoundException('Share not found');
+    }
+
+    const page = await this.pageRepo.findById(share.pageId);
+    if (!page) {
+      throw new NotFoundException('Page not found');
+    }
+
+    // Same authorization as share update
+    await this.pageAccessService.validateCanEdit(page, user);
+
+    const updated = await this.shareService.rotateShareKey(share.id);
+
+    this.auditService.log({
+      event: AuditEvent.SHARE_KEY_ROTATED,
+      resourceType: AuditResource.SHARE,
+      resourceId: share.id,
+      spaceId: share.spaceId,
+      metadata: {
+        pageId: share.pageId,
+        spaceId: share.spaceId,
+      },
+    });
+
+    return updated;
   }
 
   @HttpCode(HttpStatus.OK)

@@ -146,12 +146,18 @@ export class PersistenceExtension implements Extension {
           //this.logger.debug('Contributors error:' + err?.['message']);
         }
 
+        // MXD: anonymous share sessions have no context.user. Attribution is
+        // preserved (field omitted) rather than nulled or faked — a fake id
+        // would violate the users FK, and the old unguarded access threw
+        // inside this try/catch, silently losing every anonymous write.
         await this.pageRepo.updatePage(
           {
             content: tiptapJson,
             textContent: textContent,
             ydoc: ydocState,
-            lastUpdatedById: context.user.id,
+            ...(context?.user?.id
+              ? { lastUpdatedById: context.user.id }
+              : {}),
             contributorIds: contributorIds,
           },
           pageId,

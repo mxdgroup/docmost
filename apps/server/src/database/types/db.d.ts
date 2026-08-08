@@ -206,6 +206,7 @@ export interface Comments {
   creatorId: string | null;
   deletedAt: Timestamp | null;
   editedAt: Timestamp | null;
+  guestName: string | null;
   id: Generated<string>;
   lastEditedById: string | null;
   pageId: string;
@@ -342,6 +343,7 @@ export interface Shares {
   id: Generated<string>;
   includeSubPages: Generated<boolean | null>;
   key: string;
+  mode: Generated<string | null>;
   pageId: string | null;
   searchIndexing: Generated<boolean | null>;
   spaceId: string;

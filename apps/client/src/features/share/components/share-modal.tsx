@@ -5,18 +5,31 @@ import {
   Group,
   Indicator,
   Popover,
+  SegmentedControl,
   Switch,
   Text,
   TextInput,
+  Tooltip,
 } from "@mantine/core";
-import { IconExternalLink, IconWorld, IconLock } from "@tabler/icons-react";
+import {
+  IconExternalLink,
+  IconWorld,
+  IconLock,
+  IconRefresh,
+} from "@tabler/icons-react";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   useCreateShareMutation,
   useDeleteShareMutation,
+  useRotateShareKeyMutation,
   useShareForPageQuery,
   useUpdateShareMutation,
 } from "@/features/share/queries/share-query.ts";
+import {
+  isShareEditEnabled,
+  isShareGuestCommentsEnabled,
+} from "@/lib/config.ts";
+import { ShareMode } from "@/features/share/types/share.types.ts";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { extractPageSlugId, getPageIcon } from "@/lib";
 import { useTranslation } from "react-i18next";
@@ -51,6 +64,19 @@ export default function ShareModal({ readOnly }: ShareModalProps) {
   const createShareMutation = useCreateShareMutation();
   const updateShareMutation = useUpdateShareMutation();
   const deleteShareMutation = useDeleteShareMutation();
+  const rotateShareKeyMutation = useRotateShareKeyMutation();
+  // MXD: elevated share modes. The server enforces; flags only drive UI.
+  const modeOptions = useMemo(() => {
+    const options = [{ label: t("Can view"), value: "view" }];
+    if (isShareGuestCommentsEnabled() || isShareEditEnabled()) {
+      options.push({ label: t("Can comment"), value: "comment" });
+    }
+    if (isShareEditEnabled()) {
+      options.push({ label: t("Can edit"), value: "edit" });
+    }
+    return options;
+  }, [t]);
+  const shareMode: ShareMode = (share?.mode as ShareMode) ?? "view";
   // pageIsShared means that the share exists and its level equals zero.
   const pageIsShared = share && share.level === 0;
   // if level is greater than zero, then it is a descendant page from a shared page
@@ -114,6 +140,25 @@ export default function ShareModal({ readOnly }: ShareModalProps) {
     }
   };
 
+  const handleModeChange = async (value: string) => {
+    try {
+      await updateShareMutation.mutateAsync({
+        shareId: share.id,
+        mode: value as ShareMode,
+      });
+    } catch {
+      // query invalidation will revert the UI
+    }
+  };
+
+  const handleRotateKey = async () => {
+    try {
+      await rotateShareKeyMutation.mutateAsync(share.id);
+    } catch {
+      // notification shown by the mutation
+    }
+  };
+
   const shareLink = useMemo(
     () => (
       <Group my="sm" gap={4} wrap="nowrap">
@@ -133,9 +178,24 @@ export default function ShareModal({ readOnly }: ShareModalProps) {
         >
           <IconExternalLink size={16} />
         </ActionIcon>
+        {!readOnly && pageIsShared && (
+          <Tooltip
+            label={t("Rotate link — the current link stops working")}
+            withArrow
+          >
+            <ActionIcon
+              variant="default"
+              size="sm"
+              onClick={handleRotateKey}
+              loading={rotateShareKeyMutation.isPending}
+            >
+              <IconRefresh size={16} />
+            </ActionIcon>
+          </Tooltip>
+        )}
       </Group>
     ),
-    [publicLink],
+    [publicLink, readOnly, pageIsShared, rotateShareKeyMutation.isPending],
   );
 
   return (
@@ -248,7 +308,37 @@ export default function ShareModal({ readOnly }: ShareModalProps) {
             {pageIsShared && (
               <>
                 {shareLink}
-                <Group justify="space-between" wrap="nowrap" gap="xl">
+                {modeOptions.length > 1 && (
+                  <>
+                    <Group justify="space-between" wrap="nowrap" gap="xl">
+                      <div>
+                        <Text size="sm">{t("Anyone with the link")}</Text>
+                        <Text size="xs" c="dimmed">
+                          {shareMode === "edit"
+                            ? t("Can edit this page in real time")
+                            : shareMode === "comment"
+                              ? t("Can read and leave comments")
+                              : t("Can view this page")}
+                        </Text>
+                      </div>
+                      <SegmentedControl
+                        size="xs"
+                        data={modeOptions}
+                        value={shareMode}
+                        onChange={handleModeChange}
+                        disabled={readOnly}
+                      />
+                    </Group>
+                    {shareMode !== "view" && (
+                      <Text size="xs" c="dimmed" mt={4}>
+                        {t(
+                          "Treat this link like a password — anyone who has it gets this access. Rotate the link if it leaks.",
+                        )}
+                      </Text>
+                    )}
+                  </>
+                )}
+                <Group justify="space-between" wrap="nowrap" gap="xl" mt="sm">
                   <div>
                     <Text size="sm">{t("Include sub-pages")}</Text>
                     <Text size="xs" c="dimmed">
