@@ -16,6 +16,7 @@ import {
   JwtPdfExportDownloadPayload,
   JwtPdfRenderPayload,
   JwtType,
+  JwtShareCollabPayload,
 } from '../dto/jwt-payload';
 import { User } from '@docmost/db/types/entity.types';
 import { isUserDisabled } from '../../../common/helpers';
@@ -66,6 +67,21 @@ export class TokenService {
       type: JwtType.EXCHANGE,
     };
     return this.jwtService.sign(payload, { expiresIn: '10s' });
+  }
+
+  // MXD: short-lived, share-scoped, carries NO user id. Reconnects re-mint.
+  async generateShareCollabToken(opts: {
+    shareId: string;
+    pageId: string;
+    workspaceId: string;
+  }): Promise<string> {
+    const payload: JwtShareCollabPayload = {
+      shareId: opts.shareId,
+      pageId: opts.pageId,
+      workspaceId: opts.workspaceId,
+      type: JwtType.SHARE_COLLAB,
+    };
+    return this.jwtService.sign(payload, { expiresIn: '10m' });
   }
 
   async generateAttachmentToken(opts: {

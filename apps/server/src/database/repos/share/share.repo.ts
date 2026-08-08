@@ -125,6 +125,43 @@ export class ShareRepo {
       .executeTakeFirst();
   }
 
+  // MXD: single authoritative share-scope check. A page is within a share's
+  // scope when it IS the shared page, or (includeSubPages) a descendant of it.
+  // Used by both the collab-token mint endpoint and the ws auth extension so
+  // the two can never drift. Bounded walk mirrors getShareForPage's CTE.
+  async isPageWithinShareScope(
+    share: { pageId: string | null; includeSubPages: boolean | null },
+    pageId: string,
+  ): Promise<boolean> {
+    if (!share.pageId) return false;
+    if (share.pageId === pageId) return true;
+    if (!share.includeSubPages) return false;
+
+    const ancestor = await this.db
+      .withRecursive('page_ancestors', (db) =>
+        db
+          .selectFrom('pages')
+          .select(['id', 'parentPageId', sql`0`.as('level')])
+          .where('id', '=', pageId)
+          .where('deletedAt', 'is', null)
+          .unionAll((union) =>
+            union
+              .selectFrom('pages as p')
+              .innerJoin('page_ancestors as pa', 'pa.parentPageId', 'p.id')
+              .select(['p.id', 'p.parentPageId', sql`pa.level + 1`.as('level')])
+              .where('p.deletedAt', 'is', null)
+              .where(sql`pa.level`, '<', sql`25`),
+          ),
+      )
+      .selectFrom('page_ancestors')
+      .select('id')
+      .where('id', '=', share.pageId)
+      .limit(1)
+      .executeTakeFirst();
+
+    return !!ancestor;
+  }
+
   async deleteShare(shareId: string): Promise<void> {
     let query = this.db.deleteFrom('shares');
 

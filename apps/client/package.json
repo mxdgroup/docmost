@@ -22,6 +22,7 @@
     "@docmost/editor-ext": "workspace:*",
     "@excalidraw/excalidraw": "0.18.0-3a5ef40",
     "@floating-ui/react": "^0.27.19",
+    "@hocuspocus/provider": "^3.4.4",
     "@mantine/core": "9.3.2",
     "@mantine/dates": "9.3.2",
     "@mantine/form": "9.3.2",
@@ -68,6 +69,7 @@
     "react-router-dom": "7.18.0",
     "semver": "7.7.4",
     "socket.io-client": "4.8.3",
+    "yjs": "^13.6.30",
     "zod": "4.3.6"
   },
   "devDependencies": {

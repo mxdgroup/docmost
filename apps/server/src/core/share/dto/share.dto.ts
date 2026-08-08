@@ -62,3 +62,13 @@ export class SharePageIdDto {
   @IsNotEmpty()
   pageId: string;
 }
+
+export class ShareCollabTokenDto {
+  @IsString()
+  @IsNotEmpty()
+  shareId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  pageId: string;
+}

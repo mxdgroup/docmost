@@ -4,7 +4,11 @@ import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis'
 import { EnvironmentService } from '../environment/environment.service';
 import { EnvironmentModule } from '../environment/environment.module';
 import { parseRedisUrl } from '../../common/helpers';
-import { AUTH_THROTTLER, AI_CHAT_THROTTLER } from './throttler-names';
+import {
+  AUTH_THROTTLER,
+  AI_CHAT_THROTTLER,
+  SHARE_PUBLIC_THROTTLER,
+} from './throttler-names';
 import Redis from 'ioredis';
 
 @Module({
@@ -18,6 +22,8 @@ import Redis from 'ioredis';
           throttlers: [
             { name: AUTH_THROTTLER, ttl: 60_000, limit: 10 },
             { name: AI_CHAT_THROTTLER, ttl: 60_000, limit: 25 },
+            // MXD: per-IP cap for anonymous share endpoints
+            { name: SHARE_PUBLIC_THROTTLER, ttl: 60_000, limit: 20 },
           ],
           errorMessage: 'Too many requests',
           storage: new ThrottlerStorageRedisService(

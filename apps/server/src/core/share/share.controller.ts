@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  Logger,
+  Req,
   Body,
   Controller,
   ForbiddenException,
@@ -16,11 +18,14 @@ import { AuthWorkspace } from '../../common/decorators/auth-workspace.decorator'
 import { ShareService } from './share.service';
 import {
   CreateShareDto,
+  ShareCollabTokenDto,
   ShareIdDto,
   ShareInfoDto,
   SharePageIdDto,
   UpdateShareDto,
 } from './dto/share.dto';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { SHARE_PUBLIC_THROTTLER } from '../../integrations/throttle/throttler-names';
 import { ShareTransclusionLookupDto } from './dto/share-transclusion-lookup.dto';
 import { PageRepo } from '@docmost/db/repos/page/page.repo';
 import { PagePermissionRepo } from '@docmost/db/repos/page/page-permission.repo';
@@ -39,6 +44,8 @@ import {
 @UseGuards(JwtAuthGuard)
 @Controller('shares')
 export class ShareController {
+  private readonly logger = new Logger(ShareController.name);
+
   constructor(
     private readonly shareService: ShareService,
     private readonly shareRepo: ShareRepo,
@@ -109,6 +116,33 @@ export class ShareController {
     }
 
     return share;
+  }
+
+  // MXD: anonymous, throttled. Returns a short-lived SHARE_COLLAB token for
+  // an edit-mode share; the ws auth extension re-validates everything again.
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ [SHARE_PUBLIC_THROTTLER]: { ttl: 60_000, limit: 20 } })
+  @HttpCode(HttpStatus.OK)
+  @Post('/collab-token')
+  async mintCollabToken(
+    @Body() dto: ShareCollabTokenDto,
+    @AuthWorkspace() workspace: Workspace,
+    @Req() req: any,
+  ) {
+    const result = await this.shareService.mintShareCollabToken(
+      dto.shareId,
+      dto.pageId,
+      workspace.id,
+    );
+    // Abuse forensics: minimal per-session record (truncated IP — enough to
+    // distinguish one actor from many after an incident, not an identity
+    // system). Retention = log retention.
+    const ip = String(req?.ip ?? '').replace(/[.:][^.:]*$/, '.x');
+    this.logger.log(
+      `share-collab token minted: share=${dto.shareId} page=${dto.pageId} ip=${ip}`,
+    );
+    return result;
   }
 
   @Public()

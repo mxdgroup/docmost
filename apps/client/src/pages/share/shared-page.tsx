@@ -5,6 +5,8 @@ import { useSharePageQuery } from "@/features/share/queries/share-query.ts";
 import { Container } from "@mantine/core";
 import React, { useEffect } from "react";
 import ReadonlyPageEditor from "@/features/editor/readonly-page-editor.tsx";
+import SharedPageCollabEditor from "@/features/share/components/shared-page-collab-editor.tsx";
+import { isShareEditEnabled } from "@/lib/config.ts";
 import { extractPageSlugId } from "@/lib";
 import { Error404 } from "@/components/ui/error-404.tsx";
 import ShareBranding from "@/features/share/components/share-branding.tsx";
@@ -64,13 +66,23 @@ export default function SharedPage() {
       </Helmet>
 
       <Container fluid={fullWidth} size={fullWidth ? undefined : 900} p={0}>
-        <ReadonlyPageEditor
-          key={data.page.id}
-          title={data.page.title}
-          content={data.page.content}
-          pageId={data.page.id}
-          shareId={data.share.id}
-        />
+        {data.share.mode === "edit" && isShareEditEnabled() ? (
+          // MXD: anonymous real-time editing for edit-mode shares
+          <SharedPageCollabEditor
+            key={data.page.id}
+            pageId={data.page.id}
+            shareId={data.share.id}
+            title={data.page.title}
+          />
+        ) : (
+          <ReadonlyPageEditor
+            key={data.page.id}
+            title={data.page.title}
+            content={data.page.content}
+            pageId={data.page.id}
+            shareId={data.share.id}
+          />
+        )}
       </Container>
 
       {data && !shareId && !(data.features?.length > 0) && <ShareBranding />}

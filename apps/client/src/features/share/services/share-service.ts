@@ -51,6 +51,17 @@ export async function deleteShare(shareId: string): Promise<void> {
   await api.post("/shares/delete", { shareId });
 }
 
+export async function getShareCollabToken(
+  shareId: string,
+  pageId: string,
+): Promise<{ token: string }> {
+  const req = await api.post<{ token: string }>("/shares/collab-token", {
+    shareId,
+    pageId,
+  });
+  return req.data;
+}
+
 export async function rotateShareKey(shareId: string): Promise<IShare> {
   const req = await api.post<IShare>("/shares/rotate-key", { shareId });
   return req.data;

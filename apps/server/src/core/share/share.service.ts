@@ -144,6 +144,60 @@ export class ShareService {
     }
   }
 
+  // MXD: mint a share-scoped anonymous collab token. Every gate re-checked
+  // here is re-validated again at websocket auth (defense in depth) via the
+  // same shareRepo.isPageWithinShareScope — one authoritative scope check.
+  async mintShareCollabToken(
+    shareIdOrKey: string,
+    pageId: string,
+    workspaceId: string,
+  ): Promise<{ token: string }> {
+    if (!this.environmentService.isShareEditEnabled()) {
+      throw new ForbiddenException('Editable public links are disabled');
+    }
+
+    const share = await this.shareRepo.findById(shareIdOrKey);
+    if (!share || share.workspaceId !== workspaceId || share.deletedAt) {
+      throw new NotFoundException('Share not found');
+    }
+
+    if (normalizeShareMode(share.mode) !== ShareMode.EDIT) {
+      throw new ForbiddenException('This link is not editable');
+    }
+
+    const sharingAllowed = await this.isSharingAllowed(
+      workspaceId,
+      share.spaceId,
+    );
+    if (!sharingAllowed) {
+      throw new NotFoundException('Share not found');
+    }
+
+    const page = await this.pageRepo.findById(pageId);
+    if (!page || page.deletedAt || page.workspaceId !== workspaceId) {
+      throw new NotFoundException('Page not found');
+    }
+
+    const inScope = await this.shareRepo.isPageWithinShareScope(share, page.id);
+    if (!inScope) {
+      throw new ForbiddenException('Page is not covered by this share');
+    }
+
+    const restricted = await this.pagePermissionRepo.hasRestrictedAncestor(
+      page.id,
+    );
+    if (restricted) {
+      throw new ForbiddenException('Page is restricted');
+    }
+
+    const token = await this.tokenService.generateShareCollabToken({
+      shareId: share.id,
+      pageId: page.id,
+      workspaceId,
+    });
+    return { token };
+  }
+
   // MXD: rotate the bearer key. The old URL dies immediately; mode and all
   // other settings are preserved. Used when an elevated (comment/edit) link
   // is suspected to have leaked.

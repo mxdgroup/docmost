@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ShareService } from './share.service';
 import { ShareMode } from './share-mode';
 
@@ -8,11 +8,29 @@ function buildService(opts: {
   shareEditEnabled?: boolean;
   guestCommentsEnabled?: boolean;
   existingShare?: unknown;
+  shareById?: unknown;
+  pageById?: unknown;
+  inScope?: boolean;
+  restricted?: boolean;
+  sharingAllowed?: boolean;
 }) {
   const shareRepo = {
     findByPageId: jest.fn().mockResolvedValue(opts.existingShare ?? null),
+    findById: jest.fn().mockResolvedValue(opts.shareById ?? null),
     insertShare: jest.fn().mockImplementation(async (v) => v),
     updateShare: jest.fn().mockImplementation(async (v, _id) => v),
+    isPageWithinShareScope: jest.fn().mockResolvedValue(opts.inScope ?? true),
+  };
+  const pageRepo = {
+    findById: jest.fn().mockResolvedValue(opts.pageById ?? null),
+  };
+  const pagePermissionRepo = {
+    hasRestrictedAncestor: jest
+      .fn()
+      .mockResolvedValue(opts.restricted ?? false),
+  };
+  const tokenService = {
+    generateShareCollabToken: jest.fn().mockResolvedValue('signed-token'),
   };
   const environmentService = {
     isShareEditEnabled: jest
@@ -24,14 +42,19 @@ function buildService(opts: {
   };
   const service = new ShareService(
     shareRepo as any,
-    {} as any, // pageRepo
-    {} as any, // pagePermissionRepo
+    pageRepo as any,
+    pagePermissionRepo as any,
     {} as any, // db
-    {} as any, // tokenService
+    tokenService as any,
     {} as any, // transclusionService
     environmentService as any,
   );
-  return { service, shareRepo, environmentService };
+  if (opts.sharingAllowed !== undefined || true) {
+    jest
+      .spyOn(service, 'isSharingAllowed')
+      .mockResolvedValue(opts.sharingAllowed ?? true);
+  }
+  return { service, shareRepo, tokenService, environmentService };
 }
 
 const page = {
@@ -115,5 +138,108 @@ describe('ShareService share mode', () => {
     expect(Object.keys(patch)).toEqual(['key']);
     expect(typeof patch.key).toBe('string');
     expect(patch.key.length).toBeGreaterThan(6);
+  });
+});
+
+describe('ShareService.mintShareCollabToken', () => {
+  const wsId = workspaceId;
+  const editShare = {
+    id: 'sh-1',
+    pageId: page.id,
+    spaceId: page.spaceId,
+    workspaceId: wsId,
+    mode: 'edit',
+    includeSubPages: true,
+    deletedAt: null,
+  };
+  const livePage = { id: page.id, workspaceId: wsId, deletedAt: null };
+
+  it('mints a token for an edit share with the page in scope', async () => {
+    const { service, tokenService } = buildService({
+      shareEditEnabled: true,
+      shareById: editShare,
+      pageById: livePage,
+    });
+    const result = await service.mintShareCollabToken('sh-1', page.id, wsId);
+    expect(result).toEqual({ token: 'signed-token' });
+    expect(tokenService.generateShareCollabToken).toHaveBeenCalledWith({
+      shareId: 'sh-1',
+      pageId: page.id,
+      workspaceId: wsId,
+    });
+  });
+
+  it('403 when the flag is off — even for a valid edit share', async () => {
+    const { service, tokenService } = buildService({
+      shareEditEnabled: false,
+      shareById: editShare,
+      pageById: livePage,
+    });
+    await expect(
+      service.mintShareCollabToken('sh-1', page.id, wsId),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tokenService.generateShareCollabToken).not.toHaveBeenCalled();
+  });
+
+  it('403 for view/comment shares; 404 for missing/deleted/foreign shares', async () => {
+    for (const mode of ['view', 'comment', null]) {
+      const { service } = buildService({
+        shareEditEnabled: true,
+        shareById: { ...editShare, mode },
+        pageById: livePage,
+      });
+      await expect(
+        service.mintShareCollabToken('sh-1', page.id, wsId),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    }
+    for (const share of [
+      null,
+      { ...editShare, deletedAt: new Date() },
+      { ...editShare, workspaceId: 'other-ws' },
+    ]) {
+      const { service } = buildService({
+        shareEditEnabled: true,
+        shareById: share,
+        pageById: livePage,
+      });
+      await expect(
+        service.mintShareCollabToken('sh-1', page.id, wsId),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    }
+  });
+
+  it('403 when the page is outside the share scope or restricted', async () => {
+    const outOfScope = buildService({
+      shareEditEnabled: true,
+      shareById: editShare,
+      pageById: livePage,
+      inScope: false,
+    });
+    await expect(
+      outOfScope.service.mintShareCollabToken('sh-1', page.id, wsId),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    const restricted = buildService({
+      shareEditEnabled: true,
+      shareById: editShare,
+      pageById: livePage,
+      restricted: true,
+    });
+    await expect(
+      restricted.service.mintShareCollabToken('sh-1', page.id, wsId),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('404 for deleted or missing pages', async () => {
+    for (const p of [null, { ...livePage, deletedAt: new Date() }]) {
+      const { service } = buildService({
+        shareEditEnabled: true,
+        shareById: editShare,
+        pageById: p,
+      });
+      await expect(
+        service.mintShareCollabToken('sh-1', page.id, wsId),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    }
   });
 });
