@@ -49,6 +49,11 @@ export class StaticModule implements OnModuleInit {
           : undefined,
         POSTHOG_HOST: this.environmentService.getPostHogHost(),
         POSTHOG_KEY: this.environmentService.getPostHogKey(),
+        // MXD fork flags — server-side checks remain the enforcement point;
+        // these only drive UI affordance visibility.
+        SHARE_EDIT_ENABLED: this.environmentService.isShareEditEnabled(),
+        SHARE_GUEST_COMMENTS_ENABLED:
+          this.environmentService.isShareGuestCommentsEnabled(),
       };
 
       const windowScriptContent = `<script>window.CONFIG=${JSON.stringify(configString)};</script>`;

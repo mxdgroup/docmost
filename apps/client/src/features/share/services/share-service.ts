@@ -51,6 +51,11 @@ export async function deleteShare(shareId: string): Promise<void> {
   await api.post("/shares/delete", { shareId });
 }
 
+export async function rotateShareKey(shareId: string): Promise<IShare> {
+  const req = await api.post<IShare>("/shares/rotate-key", { shareId });
+  return req.data;
+}
+
 export async function getSharedPageTree(
   shareId: string,
 ): Promise<ISharedPageTree> {

@@ -16,6 +16,8 @@ export default defineConfig(({ mode }) => {
     BILLING_TRIAL_DAYS,
     POSTHOG_HOST,
     POSTHOG_KEY,
+    SHARE_EDIT_ENABLED,
+    SHARE_GUEST_COMMENTS_ENABLED,
   } = loadEnv(mode, envPath, "");
 
   return {
@@ -31,6 +33,8 @@ export default defineConfig(({ mode }) => {
         BILLING_TRIAL_DAYS,
         POSTHOG_HOST,
         POSTHOG_KEY,
+        SHARE_EDIT_ENABLED,
+        SHARE_GUEST_COMMENTS_ENABLED,
       },
       APP_VERSION: JSON.stringify(process.env.npm_package_version),
     },

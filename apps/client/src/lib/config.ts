@@ -43,6 +43,21 @@ export function isCloud(): boolean {
   return castToBoolean(getConfigValue("CLOUD"));
 }
 
+// MXD fork flags. UI-visibility only — the server enforces.
+export function isShareEditEnabled(): boolean {
+  if (import.meta.env.DEV) {
+    return castToBoolean(process.env.SHARE_EDIT_ENABLED);
+  }
+  return castToBoolean(getConfigValue("SHARE_EDIT_ENABLED"));
+}
+
+export function isShareGuestCommentsEnabled(): boolean {
+  if (import.meta.env.DEV) {
+    return castToBoolean(process.env.SHARE_GUEST_COMMENTS_ENABLED);
+  }
+  return castToBoolean(getConfigValue("SHARE_GUEST_COMMENTS_ENABLED"));
+}
+
 export function getAvatarUrl(
   avatarUrl: string,
   type: AvatarIconType = AvatarIconType.AVATAR,
