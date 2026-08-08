@@ -38,7 +38,10 @@ jobs:
           CHANGED=$(git diff --name-only "$BASE"..HEAD)
           echo "$CHANGED" | grep -E '^(apps/(client|server)/src/ee/|packages/ee/|packages/base-formula/)' && {
             echo "::error::Fork commits modify EE-licensed paths"; exit 1; } || true
-          # New/changed non-EE files must not import from EE paths
+          # ADDED lines in non-EE files must not introduce EE imports.
+          # (Upstream core already contains some EE imports — e.g. the page
+          # header mounts @/ee components — so we gate on what the fork ADDS,
+          # not on pre-existing upstream lines.)
           FAIL=0
           for f in $CHANGED; do
             case "$f" in
@@ -47,7 +50,7 @@ jobs:
             [ -f "$f" ] || continue
             case "$f" in
               *.ts|*.tsx|*.js|*.jsx)
-                grep -nE "from ['\"].*(/ee/|@docmost/ee|base-formula)" "$f" && { echo "::error file=$f::imports from EE path"; FAIL=1; } || true ;;
+                git diff -U0 "$BASE"..HEAD -- "$f" | grep -E "^\+.*from ['\"].*(/ee/|@docmost/ee|base-formula)" && { echo "::error file=$f::fork-added line imports from EE path"; FAIL=1; } || true ;;
             esac
           done
           exit $FAIL

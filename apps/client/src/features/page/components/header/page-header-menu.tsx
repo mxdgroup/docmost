@@ -44,6 +44,7 @@ import { PageEditModeToggle } from "@/features/user/components/page-state-pref.t
 import MovePageModal from "@/features/page/components/move-page-modal.tsx";
 import { useTimeAgo } from "@/hooks/use-time-ago.tsx";
 import { PageShareModal } from "@/ee/page-permission";
+import PageAccessPanel from "@/features/page-access/page-access-panel.tsx";
 import {
   PageVerificationMenuItem,
   PageVerificationModal,
@@ -102,6 +103,8 @@ export default function PageHeaderMenu({ readOnly }: PageHeaderMenuProps) {
       <ConnectionWarning />
 
       {!readOnly && !page?.isBase && <PageEditModeToggle size="xs" />}
+
+      {page && <PageAccessPanel pageId={page.id} readOnly={readOnly} />}
 
       <PageShareModal readOnly={readOnly} />
 
