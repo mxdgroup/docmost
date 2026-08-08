@@ -39,7 +39,7 @@ export interface ICommentNotificationJob {
   pageId: string;
   spaceId: string;
   workspaceId: string;
-  actorId: string;
+  actorId: string | null;
   mentionedUserIds: string[];
   notifyWatchers: boolean;
 }

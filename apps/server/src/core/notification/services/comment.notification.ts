@@ -202,22 +202,41 @@ export class CommentNotificationService {
       )
       .execute();
 
-    return [...new Set(participants.map((p) => p.creatorId))];
+    // guest comments have null creatorId — they cannot receive notifications
+    return [
+      ...new Set(
+        participants.map((p) => p.creatorId).filter((id): id is string => !!id),
+      ),
+    ];
   }
 
   private async getCommentContext(
-    actorId: string,
+    actorId: string | null,
     pageId: string,
     spaceId: string,
     commentId: string,
     appUrl: string,
   ) {
+    // MXD: guest comments have no actor user (actorId null). Resolve the
+    // display name from the comment's guest_name so watcher/reply
+    // notifications still flow — previously the null-id users lookup made
+    // the whole notification silently skip.
     const [actor, page, space] = await Promise.all([
-      this.db
-        .selectFrom('users')
-        .select(['id', 'name'])
-        .where('id', '=', actorId)
-        .executeTakeFirst(),
+      actorId
+        ? this.db
+            .selectFrom('users')
+            .select(['id', 'name'])
+            .where('id', '=', actorId)
+            .executeTakeFirst()
+        : this.db
+            .selectFrom('comments')
+            .select(['guestName'])
+            .where('id', '=', commentId)
+            .executeTakeFirst()
+            .then((row) => ({
+              id: null as string | null,
+              name: row?.guestName ? `${row.guestName} (guest)` : 'A guest',
+            })),
       this.db
         .selectFrom('pages')
         .select(['id', 'title', 'slugId'])
