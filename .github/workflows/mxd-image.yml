@@ -94,6 +94,11 @@ jobs:
           exit-code: "1"
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          # Gate on the app's runtime tree. /usr/local/lib/node_modules is the
+          # base image's global npm/pnpm launcher tooling (present in upstream's
+          # published image too) — not reachable by requests. App-level vulns
+          # are fixed via pnpm.overrides in package.json instead of ignored.
+          skip-dirs: /usr/local/lib/node_modules
 
       # Same build inputs -> cache hit -> effectively a tag-and-push.
       - name: Push

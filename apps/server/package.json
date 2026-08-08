@@ -42,7 +42,7 @@
     "@docmost/pdf-inspector": "1.9.6",
     "@fastify/cookie": "^11.0.2",
     "@fastify/multipart": "^10.0.0",
-    "@fastify/static": "^9.1.3",
+    "@fastify/static": "^10.1.1",
     "@keyv/redis": "^5.1.6",
     "@langchain/core": "1.1.46",
     "@langchain/textsplitters": "1.0.1",
