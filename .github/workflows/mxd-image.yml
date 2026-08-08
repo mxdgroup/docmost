@@ -15,6 +15,8 @@ on:
   push:
     branches: [mxd-main]
     tags: ["v*-mxd.*"]
+  pull_request:
+    branches: [mxd-main]
   workflow_dispatch:
 
 permissions:
@@ -106,8 +108,10 @@ jobs:
           skip-dirs: /usr/local/lib/node_modules,/home/node/.cache/node/corepack,/root/.cache/node/corepack,/usr/local/share/corepack
 
       # Same build inputs -> cache hit -> effectively a tag-and-push.
+      # PR runs stop at the scan: nothing is pushed or signed from a PR.
       - name: Push
         id: push
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -118,17 +122,21 @@ jobs:
           cache-from: type=gha
 
       - name: SBOM (attached as workflow artifact)
+        if: github.event_name != 'pull_request'
         uses: anchore/sbom-action@v0
         with:
           image: ghcr.io/mxdgroup/docmost@${{ steps.push.outputs.digest }}
           artifact-name: sbom-${{ github.sha }}.spdx.json
 
       - uses: sigstore/cosign-installer@v3
+        if: github.event_name != 'pull_request'
 
       - name: Sign pushed digest (keyless)
+        if: github.event_name != 'pull_request'
         run: cosign sign --yes ghcr.io/mxdgroup/docmost@${{ steps.push.outputs.digest }}
 
       - name: Record digests in job summary
+        if: github.event_name != 'pull_request'
         run: |
           {
             echo "## Image build record"
