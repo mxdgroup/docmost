@@ -133,6 +133,9 @@ export class DatabaseModule implements OnApplicationBootstrap {
 
     if (this.environmentService.getNodeEnv() === 'production') {
       await this.migrationService.migrateToLatest();
+      // MXD fork migrations run after upstream's, from their own ledger
+      // (mxd_migration) — see MXD-FORK.md.
+      await this.migrationService.migrateMxdToLatest();
     }
   }
 

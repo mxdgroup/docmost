@@ -27,7 +27,11 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config test/jest-e2e.json"
+    "test:e2e": "jest --config test/jest-e2e.json",
+    "migration-mxd:create": "tsx src/database/migrate-mxd.ts create",
+    "migration-mxd:up": "tsx src/database/migrate-mxd.ts up",
+    "migration-mxd:down": "tsx src/database/migrate-mxd.ts down",
+    "migration-mxd:latest": "tsx src/database/migrate-mxd.ts latest"
   },
   "dependencies": {
     "@ai-sdk/google": "3.0.52",

@@ -26,6 +26,9 @@ import { validate as isValidUUID } from 'uuid';
 import { sql } from 'kysely';
 import { TransclusionService } from '../page/transclusion/transclusion.service';
 import { TransclusionLookup } from '../page/transclusion/transclusion.types';
+import { ShareMode, normalizeShareMode } from './share-mode';
+import { EnvironmentService } from '../../integrations/environment/environment.service';
+import { ForbiddenException } from '@nestjs/common';
 
 @Injectable()
 export class ShareService {
@@ -38,7 +41,28 @@ export class ShareService {
     @InjectKysely() private readonly db: KyselyDB,
     private readonly tokenService: TokenService,
     private readonly transclusionService: TransclusionService,
+    private readonly environmentService: EnvironmentService,
   ) {}
+
+  // MXD: mode transitions above 'view' are gated by env flags so the fork
+  // can ship dark. Comment mode rides the guest-comments flag; edit mode
+  // rides the share-edit flag ('edit' implies 'comment', so the edit flag
+  // alone is enough for edit shares).
+  private assertModeAllowedByFlags(mode: string | undefined | null): void {
+    const normalized = normalizeShareMode(mode);
+    if (
+      normalized === ShareMode.EDIT &&
+      !this.environmentService.isShareEditEnabled()
+    ) {
+      throw new ForbiddenException('Editable public links are disabled');
+    }
+    if (
+      normalized === ShareMode.COMMENT &&
+      !this.environmentService.isShareGuestCommentsEnabled()
+    ) {
+      throw new ForbiddenException('Guest comments are disabled');
+    }
+  }
 
   async getShareTree(shareId: string, workspaceId: string) {
     const share = await this.shareRepo.findById(shareId);
@@ -79,16 +103,20 @@ export class ShareService {
         return shares;
       }
 
+      this.assertModeAllowedByFlags(createShareDto.mode);
+
       return await this.shareRepo.insertShare({
         key: nanoIdGen().toLowerCase(),
         pageId: page.id,
         includeSubPages: createShareDto.includeSubPages ?? false,
         searchIndexing: createShareDto.searchIndexing ?? false,
+        mode: normalizeShareMode(createShareDto.mode),
         creatorId: authUserId,
         spaceId: page.spaceId,
         workspaceId,
       });
     } catch (err) {
+      if (err instanceof ForbiddenException) throw err;
       this.logger.error(err);
       throw new BadRequestException('Failed to share page');
     }
@@ -96,16 +124,38 @@ export class ShareService {
 
   async updateShare(shareId: string, updateShareDto: UpdateShareDto) {
     try {
+      if (updateShareDto.mode !== undefined) {
+        this.assertModeAllowedByFlags(updateShareDto.mode);
+      }
       return this.shareRepo.updateShare(
         {
           includeSubPages: updateShareDto.includeSubPages,
           searchIndexing: updateShareDto.searchIndexing,
+          ...(updateShareDto.mode !== undefined
+            ? { mode: normalizeShareMode(updateShareDto.mode) }
+            : {}),
         },
         shareId,
       );
     } catch (err) {
+      if (err instanceof ForbiddenException) throw err;
       this.logger.error(err);
       throw new BadRequestException('Failed to update share');
+    }
+  }
+
+  // MXD: rotate the bearer key. The old URL dies immediately; mode and all
+  // other settings are preserved. Used when an elevated (comment/edit) link
+  // is suspected to have leaked.
+  async rotateShareKey(shareId: string) {
+    try {
+      return await this.shareRepo.updateShare(
+        { key: nanoIdGen().toLowerCase() },
+        shareId,
+      );
+    } catch (err) {
+      this.logger.error(err);
+      throw new BadRequestException('Failed to rotate share key');
     }
   }
 
@@ -155,6 +205,7 @@ export class ShareService {
             'shares.key as shareKey',
             'shares.includeSubPages',
             'shares.searchIndexing',
+            'shares.mode',
             'shares.creatorId',
             'shares.spaceId',
             'shares.workspaceId',
@@ -179,6 +230,7 @@ export class ShareService {
                   's.key as shareKey',
                   's.includeSubPages',
                   's.searchIndexing',
+                  's.mode',
                   's.creatorId',
                   's.spaceId',
                   's.workspaceId',
@@ -208,6 +260,7 @@ export class ShareService {
       key: share.shareKey,
       includeSubPages: share.includeSubPages,
       searchIndexing: share.searchIndexing,
+      mode: normalizeShareMode(share.mode as string | null),
       pageId: share.id,
       creatorId: share.creatorId,
       spaceId: share.spaceId,
