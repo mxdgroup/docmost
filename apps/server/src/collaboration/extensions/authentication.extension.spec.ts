@@ -15,6 +15,7 @@ function build(opts: {
   page?: any;
   inScope?: boolean;
   restricted?: boolean;
+  sharingAllowed?: boolean;
   tokenPayload?: any;
   collabPayload?: any;
   user?: any;
