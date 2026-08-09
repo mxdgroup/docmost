@@ -69,18 +69,19 @@ written directly.
 
 ### E — Relational tables (foundation)
 - [~] **E1. Core schema migration** — `mxd_tables/fields/records/views/record_links`.
-      DONE (migration written; pending falsification-boot test + type regen).
-- [ ] **E2. DB types + repos.** Regenerate `db.d.ts` (kysely-codegen per repo
-      convention) or hand-add interfaces; `MxdTableRepo`, `MxdFieldRepo`,
-      `MxdRecordRepo`, `MxdViewRepo`, `MxdRecordLinkRepo` following
-      `apps/server/src/database/repos/**` patterns.
-- [ ] **E3. Field-type registry.** `apps/server/src/core/mxd-data/field-types/` —
-      one module per type implementing the contract above. Pure, unit-tested.
-- [ ] **E4. Table/field/record services + controller.** CRUD: create/rename/
-      archive table; add/rename/reorder/reconfigure field (with safe type-change
-      matrix); add/edit/duplicate/archive record; bulk select; version-checked
-      updates (409 on stale). Guards: field-name collision, invalid type
-      conversion, deleted relation targets, concurrent edits.
+      DONE + reviewed (workspace_id denormalized onto child tables, GIN index).
+- [x] **E2. DB types + repos.** Hand-added `Mxd*` interfaces to `db.d.ts` +
+      entity aliases; scoped IDOR-safe repos `MxdTableRepo`/`MxdFieldRepo`/
+      `MxdRecordRepo`/`MxdViewRepo`/`MxdRecordLinkRepo` (every method takes
+      workspaceId; optimistic-concurrency writes). DONE.
+- [x] **E3. Field-type registry.** `field-types/` registry with real validation
+      for 13 storable types + relation/computed handling + conversion semantics;
+      19 jest specs, CI-wired. DONE.
+- [x] **E4. Table/field/record services + controller.** Table lifecycle (atomic
+      create), field lifecycle (rename=stable-id, change-type conversion policy,
+      delete=strip-cells), record CRUD (registry validation, 409 on stale, list
+      cap). Thin controller behind `MXD_DATA_PLATFORM_ENABLED`. 35 specs green.
+      DONE. **Follow-up (before enablement): space/table-level authz (§17).**
 - [ ] **E5. Editor node.** `mxdTable` ProseMirror node holding ONLY
       `{tableId, viewId}` (row data never enters the Y.doc). Client feature
       `apps/client/src/features/mxd-data/` renders the grid via its own
@@ -180,3 +181,17 @@ stack. Production enablement is a separate reversible flag flip, per fork policy
 ## Progress log
 - 2026-08-09: ledger created; core schema migration `20260809T120000-mxd-data-platform-core.ts`
   written (E1). Next: E2 (types + repos), then E3/E4 (field-type registry + services).
+- 2026-08-09: **E1 reviewed** (workspace_id denormalized onto child tables for
+  IDOR-safe scoping; GIN index on records.data). **E2** types + scoped repos.
+  **E3** field-type registry (19 specs). **E4** table/field/record services +
+  thin controller + module behind `MXD_DATA_PLATFORM_ENABLED` (35 specs green,
+  full server tsc clean, clean-room green). Entire server-side of item E is in.
+- **Known follow-ups before E enablement (tracked, not skipped):**
+  - **Authz (§17):** controller is workspace-scoped only; space/table/view/
+    record-level authorization is the next required increment before the flag is
+    enabled in any shared workspace.
+  - **DB-backed test harness (§3/§5):** repo-level IDOR tests and the upstream-
+    boot falsification need a Postgres test harness CI doesn't have yet; stand it
+    up before relying on DB-enforced scoping. Service/registry logic unit-tested.
+- Next: **E5** — `mxdTable` editor node + client grid feature, then browser-test
+  a real table through the actual UI (the discipline that caught the share bug).
