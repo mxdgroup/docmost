@@ -549,25 +549,7 @@ export class ShareService {
     workspaceId: string,
     spaceId: string,
   ): Promise<boolean> {
-    const result = await this.db
-      .selectFrom('workspaces')
-      .innerJoin('spaces', 'spaces.workspaceId', 'workspaces.id')
-      .select([
-        'workspaces.settings as workspaceSettings',
-        'spaces.settings as spaceSettings',
-      ])
-      .where('workspaces.id', '=', workspaceId)
-      .where('spaces.id', '=', spaceId)
-      .executeTakeFirst();
-
-    if (!result) return false;
-
-    const workspaceDisabled =
-      (result.workspaceSettings as any)?.sharing?.disabled === true;
-    const spaceDisabled =
-      (result.spaceSettings as any)?.sharing?.disabled === true;
-
-    return !workspaceDisabled && !spaceDisabled;
+    return this.shareRepo.isSharingAllowed(workspaceId, spaceId);
   }
 
   async updatePublicAttachments(page: Page): Promise<any> {

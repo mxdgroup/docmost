@@ -163,8 +163,19 @@ export class AuthenticationExtension implements Extension {
       share.workspaceId !== payload.workspaceId ||
       normalizeShareMode(share.mode) !== ShareMode.EDIT
     ) {
-      // Revoked, downgraded, or rotated shares cut off editors here on the
+      // Revoked, downgraded, or deleted shares cut off editors here on the
       // next (re)connect — acceptable staleness = token TTL (10m).
+      throw new UnauthorizedException();
+    }
+
+    // Parity with the mint path: honor the workspace/space public-sharing kill
+    // switch on reconnect too, so disabling sharing cuts off anonymous editors
+    // within the token TTL rather than only blocking new mints.
+    const sharingAllowed = await this.shareRepo.isSharingAllowed(
+      share.workspaceId,
+      share.spaceId,
+    );
+    if (!sharingAllowed) {
       throw new UnauthorizedException();
     }
 

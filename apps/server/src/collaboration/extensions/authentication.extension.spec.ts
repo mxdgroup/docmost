@@ -50,6 +50,7 @@ function build(opts: {
   const shareRepo = {
     findById: jest.fn().mockResolvedValue('share' in opts ? opts.share : null),
     isPageWithinShareScope: jest.fn().mockResolvedValue(opts.inScope ?? true),
+    isSharingAllowed: jest.fn().mockResolvedValue(opts.sharingAllowed ?? true),
   };
   const environmentService = {
     isShareEditEnabled: jest.fn().mockReturnValue(opts.flag ?? true),
@@ -108,6 +109,17 @@ describe('AuthenticationExtension share-collab branch', () => {
       tokenPayload: validPayload,
       share: editShare,
       flag: false,
+    });
+    await expect(ext.onAuthenticate(payloadFor())).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
+  it('rejects when workspace/space sharing is disabled (kill switch on reconnect)', async () => {
+    const { ext } = build({
+      tokenPayload: validPayload,
+      share: editShare,
+      sharingAllowed: false,
     });
     await expect(ext.onAuthenticate(payloadFor())).rejects.toBeInstanceOf(
       UnauthorizedException,

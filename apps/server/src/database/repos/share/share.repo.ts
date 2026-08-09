@@ -162,6 +162,32 @@ export class ShareRepo {
     return !!ancestor;
   }
 
+  // MXD: workspace/space-level public-sharing kill switch. Lives here (not just
+  // on ShareService) so the collab ws-auth path can re-check it on reconnect
+  // without a circular service dependency.
+  async isSharingAllowed(
+    workspaceId: string,
+    spaceId: string,
+  ): Promise<boolean> {
+    const result = await this.db
+      .selectFrom('workspaces')
+      .innerJoin('spaces', 'spaces.workspaceId', 'workspaces.id')
+      .select([
+        'workspaces.settings as workspaceSettings',
+        'spaces.settings as spaceSettings',
+      ])
+      .where('workspaces.id', '=', workspaceId)
+      .where('spaces.id', '=', spaceId)
+      .executeTakeFirst();
+
+    if (!result) return false;
+    const workspaceDisabled =
+      (result.workspaceSettings as any)?.sharing?.disabled === true;
+    const spaceDisabled =
+      (result.spaceSettings as any)?.sharing?.disabled === true;
+    return !workspaceDisabled && !spaceDisabled;
+  }
+
   async deleteShare(shareId: string): Promise<void> {
     let query = this.db.deleteFrom('shares');
 
