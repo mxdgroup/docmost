@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { sql } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import { KyselyDB, KyselyTransaction } from '@docmost/db/types/kysely.types';
 import { dbOrTx } from '@docmost/db/utils';
@@ -135,6 +136,58 @@ export class MxdRecordRepo {
       .where('deletedAt', 'is', null)
       .returningAll()
       .executeTakeFirst();
+  }
+
+  // All live records' id + data for a table — used by field type-conversion,
+  // which must re-normalize every existing cell. Bounded by table size; callers
+  // treat conversion as an admin op (roadmap §7).
+  async allForTable(
+    workspaceId: string,
+    tableId: string,
+    trx?: KyselyTransaction,
+  ): Promise<Pick<MxdRecord, 'id' | 'data' | 'version'>[]> {
+    return dbOrTx(this.db, trx)
+      .selectFrom('mxdRecords')
+      .select(['id', 'data', 'version'])
+      .where('workspaceId', '=', workspaceId)
+      .where('tableId', '=', tableId)
+      .where('deletedAt', 'is', null)
+      .execute();
+  }
+
+  // Remove a field's key from every record's jsonb (field delete policy §12:
+  // values are REMOVED, so deleted-field data can never leak via API/export).
+  async stripField(
+    workspaceId: string,
+    tableId: string,
+    fieldId: string,
+    trx?: KyselyTransaction,
+  ): Promise<void> {
+    await dbOrTx(this.db, trx)
+      .updateTable('mxdRecords')
+      .set((eb) => ({ data: sql`${eb.ref('data')} - ${fieldId}` }))
+      .where('workspaceId', '=', workspaceId)
+      .where('tableId', '=', tableId)
+      .execute();
+  }
+
+  // Direct data replace (no version bump) for schema-level operations like type
+  // conversion, where the whole column is being rewritten under an editor's
+  // control rather than a concurrent record edit.
+  async replaceData(
+    workspaceId: string,
+    tableId: string,
+    recordId: string,
+    data: Record<string, unknown>,
+    trx?: KyselyTransaction,
+  ): Promise<void> {
+    await dbOrTx(this.db, trx)
+      .updateTable('mxdRecords')
+      .set({ data: JSON.stringify(data) as unknown as any, updatedAt: new Date() })
+      .where('id', '=', recordId)
+      .where('tableId', '=', tableId)
+      .where('workspaceId', '=', workspaceId)
+      .execute();
   }
 
   async maxPosition(
