@@ -42,6 +42,34 @@ jobs:
       - name: Fork must not modify or import EE paths
         run: bash scripts/mxd-ee-clean-room-check.sh
 
+  fork-tests:
+    # Gate on the fork's OWN specs. The full upstream jest suite has
+    # pre-existing ESM/DI config failures we don't own, so we scope to the
+    # tests the fork added or touched — this catches a broken/uncompilable
+    # fork spec before it merges (the image build alone doesn't run jest).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build workspace packages (editor-ext, base-formula)
+        run: pnpm nx run @docmost/editor-ext:build
+      - name: Run fork specs
+        working-directory: apps/server
+        run: >-
+          pnpm jest
+          src/core/share
+          src/collaboration/extensions/authentication.extension.spec.ts
+          src/collaboration/extensions/persistence.extension.spec.ts
+          src/core/page/page-access
+          --ci
+
   build:
     runs-on: ubuntu-latest
     needs: ee-clean-room
