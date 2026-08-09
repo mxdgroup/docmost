@@ -69,6 +69,12 @@ jobs:
           src/collaboration/extensions/persistence.extension.spec.ts
           src/core/page/page-access
           --ci
+      # Fork CLIENT specs — the server jest run above never covers client code,
+      # so client regressions (e.g. the page-header→share-modal caller wiring)
+      # would otherwise never run in CI. Scoped to the fork's own client tests.
+      - name: Run fork client specs
+        working-directory: apps/client
+        run: pnpm vitest run src/features/page/components/header/__tests__
 
   build:
     runs-on: ubuntu-latest
