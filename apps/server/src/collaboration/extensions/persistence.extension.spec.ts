@@ -32,4 +32,17 @@ describe('authorizedUserMentions (anonymous mention-spoof guard)', () => {
       { creatorId: U1, entityId: VICTIM, id: 'ok' },
     ]);
   });
+
+  it('preserves a real editor mention when a guest edits in the same window', () => {
+    // debounce window had both an authenticated editor U1 and an anonymous
+    // guest; editingUserIds = [U1]. U1's legit mention survives; the guest
+    // cannot forge one.
+    const batch = [
+      { creatorId: U1, entityId: U2, id: 'legit-by-U1' },
+      { creatorId: VICTIM, entityId: U1, id: 'guest-forged' },
+    ];
+    expect(authorizedUserMentions(batch, [U1])).toEqual([
+      { creatorId: U1, entityId: U2, id: 'legit-by-U1' },
+    ]);
+  });
 });
