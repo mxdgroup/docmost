@@ -34,8 +34,7 @@ import { MxdFieldService } from './services/mxd-field.service';
 import { MxdRecordService } from './services/mxd-record.service';
 
 class CreateTableDto {
-  @IsString() spaceId: string;
-  @IsOptional() @IsString() pageId?: string;
+  @IsString() pageId: string;
   @IsOptional() @IsString() title?: string;
 }
 class TableIdDto {

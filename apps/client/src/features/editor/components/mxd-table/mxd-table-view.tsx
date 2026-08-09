@@ -16,6 +16,7 @@ import {
   MxdField,
   MxdRecord,
   mxdCreateRecord,
+  mxdCreateTable,
   mxdListFields,
   mxdListRecords,
   mxdUpdateRecord,
@@ -88,10 +89,31 @@ export default function MxdTableView(props: NodeViewProps) {
   };
 
   if (!tableId) {
+    const pageId: string | undefined = (props.editor.storage as any).pageId;
+    const createTable = async () => {
+      if (!pageId) return;
+      try {
+        const table = await mxdCreateTable({ pageId, title: "Table" });
+        // Store ONLY the reference on the node — the table lives in mxd_*.
+        props.updateAttributes({ tableId: table.id, viewId: null });
+      } catch (err: any) {
+        notifications.show({
+          color: "red",
+          message: err?.response?.data?.message ?? "Could not create the table",
+        });
+      }
+    };
     return (
       <NodeViewWrapper>
         <Alert color="gray" variant="light">
-          <Text size="sm">This table block isn’t linked to a table yet.</Text>
+          <Group justify="space-between">
+            <Text size="sm">This table block isn’t linked to a table yet.</Text>
+            {editable && pageId && (
+              <Button size="compact-xs" onClick={createTable}>
+                Create table
+              </Button>
+            )}
+          </Group>
         </Alert>
       </NodeViewWrapper>
     );

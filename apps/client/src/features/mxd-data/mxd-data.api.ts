@@ -41,8 +41,7 @@ export const mxdGetTable = (tableId: string): Promise<MxdTable> =>
   api.post("/mxd/tables/get", { tableId }).then((r) => r.data);
 
 export const mxdCreateTable = (input: {
-  spaceId: string;
-  pageId?: string;
+  pageId: string;
   title?: string;
 }): Promise<MxdTable> =>
   api.post("/mxd/tables/create", input).then((r) => r.data);

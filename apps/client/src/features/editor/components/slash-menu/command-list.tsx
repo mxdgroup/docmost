@@ -3,6 +3,7 @@ import {
   SlashMenuGroupedItemsType,
   SlashMenuItemType,
 } from "@/features/editor/components/slash-menu/types";
+import { isMxdDataPlatformEnabled } from "@/lib/config.ts";
 import {
   ActionIcon,
   Badge,
@@ -44,7 +45,8 @@ const CommandList = ({
   // expired license the client can't detect falls through to a handled
   // create failure.
   const isItemDisabled = (item: SlashMenuItemType) =>
-    !hasBases && item.requiresBases === true;
+    (!hasBases && item.requiresBases === true) ||
+    (!isMxdDataPlatformEnabled() && item.requiresMxdData === true);
 
   const flatItems = useMemo(() => {
     return Object.values(items).flat();

@@ -372,6 +372,23 @@ const CommandGroups: SlashMenuGroupedItemsType = {
       },
     },
     {
+      // MXD data platform — inserts the mxdTable node; its NodeView creates the
+      // backing table on first "Create table" click. Hidden unless the feature
+      // flag is on (requiresMxdData).
+      title: "Data table",
+      description: "Insert a relational data table.",
+      searchTerms: ["data", "database", "table", "grid", "records", "mxd"],
+      icon: IconTable,
+      requiresMxdData: true,
+      command: ({ editor, range }: CommandProps) =>
+        editor
+          .chain()
+          .focus()
+          .deleteRange(range)
+          .setMxdTable({ tableId: null, viewId: null })
+          .run(),
+    },
+    {
       title: "Kanban",
       description: "Insert a kanban board on this page",
       searchTerms: ["kanban", "board", "cards", "status", "task", "database"],

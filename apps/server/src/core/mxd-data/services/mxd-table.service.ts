@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -7,6 +8,7 @@ import { KyselyDB } from '@docmost/db/types/kysely.types';
 import { MxdTableRepo } from '@docmost/db/repos/mxd-data/mxd-table.repo';
 import { MxdFieldRepo } from '@docmost/db/repos/mxd-data/mxd-field.repo';
 import { MxdViewRepo } from '@docmost/db/repos/mxd-data/mxd-view.repo';
+import { PageRepo } from '@docmost/db/repos/page/page.repo';
 import { MxdTable } from '@docmost/db/types/entity.types';
 import { MxdContext } from '../mxd-context';
 
@@ -20,18 +22,26 @@ export class MxdTableService {
     private readonly tableRepo: MxdTableRepo,
     private readonly fieldRepo: MxdFieldRepo,
     private readonly viewRepo: MxdViewRepo,
+    private readonly pageRepo: PageRepo,
   ) {}
 
+  // A table is homed on a page. The space is derived from that page, and the
+  // page is validated to belong to the caller's workspace — so a table can never
+  // be created against another tenant's page (authz, roadmap §17).
   async createTable(
     ctx: MxdContext,
-    input: { spaceId: string; pageId?: string | null; title?: string },
+    input: { pageId: string; title?: string },
   ): Promise<MxdTable> {
+    const page = await this.pageRepo.findById(input.pageId);
+    if (!page || page.workspaceId !== ctx.workspaceId) {
+      throw new ForbiddenException('Page not found in this workspace');
+    }
     return this.db.transaction().execute(async (trx) => {
       const table = await this.tableRepo.insert(
         {
           workspaceId: ctx.workspaceId,
-          spaceId: input.spaceId,
-          pageId: input.pageId ?? null,
+          spaceId: page.spaceId,
+          pageId: page.id,
           title: input.title?.trim() || 'Untitled',
           creatorId: ctx.userId,
         },
