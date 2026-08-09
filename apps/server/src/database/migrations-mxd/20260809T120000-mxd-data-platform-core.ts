@@ -58,6 +58,13 @@ export async function up(db: Kysely<any>): Promise<void> {
     .addColumn('table_id', 'uuid', (col) =>
       col.notNull().references('mxd_tables.id').onDelete('cascade'),
     )
+    // Denormalized (immutable) workspace scope — a field never moves tables, so
+    // this is set once. Lets every repo query filter by workspace directly
+    // (IDOR-safety by construction, roadmap §5/§17/§33) rather than joining up
+    // through table_id on every call.
+    .addColumn('workspace_id', 'uuid', (col) =>
+      col.notNull().references('workspaces.id').onDelete('cascade'),
+    )
     .addColumn('name', 'varchar', (col) => col.notNull())
     .addColumn('type', 'varchar', (col) => col.notNull())
     .addColumn('config', 'jsonb', (col) => col.notNull().defaultTo(sql`'{}'::jsonb`))
@@ -96,6 +103,10 @@ export async function up(db: Kysely<any>): Promise<void> {
     .addColumn('table_id', 'uuid', (col) =>
       col.notNull().references('mxd_tables.id').onDelete('cascade'),
     )
+    // Denormalized immutable workspace scope (see mxd_fields note).
+    .addColumn('workspace_id', 'uuid', (col) =>
+      col.notNull().references('workspaces.id').onDelete('cascade'),
+    )
     .addColumn('data', 'jsonb', (col) => col.notNull().defaultTo(sql`'{}'::jsonb`))
     .addColumn('position', 'double precision', (col) => col.notNull().defaultTo(0))
     .addColumn('version', 'integer', (col) => col.notNull().defaultTo(1))
@@ -127,6 +138,10 @@ export async function up(db: Kysely<any>): Promise<void> {
     .addColumn('table_id', 'uuid', (col) =>
       col.notNull().references('mxd_tables.id').onDelete('cascade'),
     )
+    // Denormalized immutable workspace scope (see mxd_fields note).
+    .addColumn('workspace_id', 'uuid', (col) =>
+      col.notNull().references('workspaces.id').onDelete('cascade'),
+    )
     .addColumn('name', 'varchar', (col) => col.notNull().defaultTo('Grid'))
     // 'grid' | 'board' | 'list' | 'calendar' | 'gallery'
     .addColumn('type', 'varchar', (col) => col.notNull().defaultTo('grid'))
@@ -154,6 +169,13 @@ export async function up(db: Kysely<any>): Promise<void> {
     )
     .addColumn('field_id', 'uuid', (col) =>
       col.notNull().references('mxd_fields.id').onDelete('cascade'),
+    )
+    // Denormalized immutable workspace scope: both endpoints of a relation edge
+    // must live in this workspace — the service asserts it, and this column lets
+    // the DB/queries enforce and filter without walking to the records' tables
+    // (roadmap §24 same-workspace relation constraint).
+    .addColumn('workspace_id', 'uuid', (col) =>
+      col.notNull().references('workspaces.id').onDelete('cascade'),
     )
     .addColumn('from_record_id', 'uuid', (col) =>
       col.notNull().references('mxd_records.id').onDelete('cascade'),
@@ -192,6 +214,19 @@ export async function up(db: Kysely<any>): Promise<void> {
     .createIndex('idx_mxd_records_table')
     .on('mxd_records')
     .column('table_id')
+    .execute();
+  // GIN on the jsonb cell bag — supports containment/key filters (roadmap §23
+  // filter performance) so a filtered view doesn't full-scan the table.
+  await db.schema
+    .createIndex('idx_mxd_records_data_gin')
+    .on('mxd_records')
+    .using('gin')
+    .column('data')
+    .execute();
+  await db.schema
+    .createIndex('idx_mxd_records_workspace')
+    .on('mxd_records')
+    .column('workspace_id')
     .execute();
   await db.schema
     .createIndex('idx_mxd_views_table')

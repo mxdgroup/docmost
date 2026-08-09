@@ -663,6 +663,7 @@ export interface MxdFields {
   tableId: string;
   type: string;
   updatedAt: Generated<Timestamp>;
+  workspaceId: string;
 }
 
 export interface MxdRecords {
@@ -677,6 +678,7 @@ export interface MxdRecords {
   updatedAt: Generated<Timestamp>;
   updatedById: string | null;
   version: Generated<number>;
+  workspaceId: string;
 }
 
 export interface MxdViews {
@@ -689,6 +691,7 @@ export interface MxdViews {
   tableId: string;
   type: Generated<string>;
   updatedAt: Generated<Timestamp>;
+  workspaceId: string;
 }
 
 export interface MxdRecordLinks {
@@ -697,6 +700,7 @@ export interface MxdRecordLinks {
   fromRecordId: string;
   id: Generated<string>;
   toRecordId: string;
+  workspaceId: string;
 }
 
 export interface DB {
