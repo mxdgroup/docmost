@@ -68,6 +68,7 @@ jobs:
           src/collaboration/extensions/authentication.extension.spec.ts
           src/collaboration/extensions/persistence.extension.spec.ts
           src/core/page/page-access
+          src/core/mxd-data
           --ci
 
   build:
