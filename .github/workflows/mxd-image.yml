@@ -33,29 +33,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Fork commits must not touch EE paths
-        run: |
-          git fetch --no-tags origin +refs/tags/v0.95.0:refs/tags/v0.95.0 2>/dev/null || git fetch --tags https://github.com/docmost/docmost.git v0.95.0 || true
-          BASE=$(git merge-base v0.95.0 HEAD)
-          CHANGED=$(git diff --name-only "$BASE"..HEAD)
-          echo "$CHANGED" | grep -E '^(apps/(client|server)/src/ee/|packages/ee/|packages/base-formula/)' && {
-            echo "::error::Fork commits modify EE-licensed paths"; exit 1; } || true
-          # ADDED lines in non-EE files must not introduce EE imports.
-          # (Upstream core already contains some EE imports — e.g. the page
-          # header mounts @/ee components — so we gate on what the fork ADDS,
-          # not on pre-existing upstream lines.)
-          FAIL=0
-          for f in $CHANGED; do
-            case "$f" in
-              apps/client/src/ee/*|apps/server/src/ee/*|packages/ee/*|packages/base-formula/*) continue ;;
-            esac
-            [ -f "$f" ] || continue
-            case "$f" in
-              *.ts|*.tsx|*.js|*.jsx)
-                git diff -U0 "$BASE"..HEAD -- "$f" | grep -E "^\+.*from ['\"].*(/ee/|@docmost/ee|base-formula)" && { echo "::error file=$f::fork-added line imports from EE path"; FAIL=1; } || true ;;
-            esac
-          done
-          exit $FAIL
+      - name: Ensure base tag is available
+        run: git fetch --no-tags origin +refs/tags/v0.95.0:refs/tags/v0.95.0 2>/dev/null || git fetch --tags https://github.com/docmost/docmost.git v0.95.0 || true
+      # The guard is a tested script (scripts/mxd-ee-clean-room-check.sh) with a
+      # built-in self-test, so it can never silently rot into a false pass.
+      - name: Clean-room guard self-test
+        run: MXD_CLEAN_ROOM_SELFTEST=1 bash scripts/mxd-ee-clean-room-check.sh
+      - name: Fork must not modify or import EE paths
+        run: bash scripts/mxd-ee-clean-room-check.sh
 
   build:
     runs-on: ubuntu-latest
