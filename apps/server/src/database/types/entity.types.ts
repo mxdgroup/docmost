@@ -40,6 +40,11 @@ import {
   Watchers,
   Audit as _Audit,
   Templates,
+  MxdTables,
+  MxdFields,
+  MxdRecords,
+  MxdViews,
+  MxdRecordLinks,
 } from './db';
 import { PageEmbeddings } from '@docmost/db/types/embeddings.types';
 
@@ -256,3 +261,24 @@ export type UpdatableBaseRow = Updateable<Omit<BaseRows, 'id'>>;
 export type BaseView = Selectable<BaseViews>;
 export type InsertableBaseView = Insertable<BaseViews>;
 export type UpdatableBaseView = Updateable<Omit<BaseViews, 'id'>>;
+
+// MXD data platform (roadmap Phase 4)
+export type MxdTable = Selectable<MxdTables>;
+export type InsertableMxdTable = Insertable<MxdTables>;
+export type UpdatableMxdTable = Updateable<Omit<MxdTables, 'id'>>;
+
+export type MxdField = Selectable<MxdFields>;
+export type InsertableMxdField = Insertable<MxdFields>;
+export type UpdatableMxdField = Updateable<Omit<MxdFields, 'id'>>;
+
+export type MxdRecord = Selectable<MxdRecords>;
+export type InsertableMxdRecord = Insertable<MxdRecords>;
+export type UpdatableMxdRecord = Updateable<Omit<MxdRecords, 'id'>>;
+
+export type MxdView = Selectable<MxdViews>;
+export type InsertableMxdView = Insertable<MxdViews>;
+export type UpdatableMxdView = Updateable<Omit<MxdViews, 'id'>>;
+
+export type MxdRecordLink = Selectable<MxdRecordLinks>;
+export type InsertableMxdRecordLink = Insertable<MxdRecordLinks>;
+export type UpdatableMxdRecordLink = Updateable<Omit<MxdRecordLinks, 'id'>>;
