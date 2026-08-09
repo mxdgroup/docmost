@@ -41,6 +41,11 @@ export class MxdFieldService {
     return field;
   }
 
+  async listFields(ctx: MxdContext, tableId: string): Promise<MxdField[]> {
+    await this.requireTable(ctx, tableId);
+    return this.fieldRepo.listByTable(ctx.workspaceId, tableId);
+  }
+
   async addField(
     ctx: MxdContext,
     tableId: string,
