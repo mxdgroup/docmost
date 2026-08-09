@@ -71,6 +71,40 @@ jobs:
           src/core/mxd-data
           --ci
 
+  mxd-db-check:
+    # DB-backed verification of the data-platform migration + repo scoping
+    # (roadmap §3/§5): applies the mxd migration against a real Postgres and
+    # asserts workspace isolation (IDOR), the unique constraint, and
+    # optimistic-concurrency (stale + cross-workspace writes refused).
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: t
+          POSTGRES_PASSWORD: t
+          POSTGRES_DB: t
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U t"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Migration + scoping + concurrency check
+        working-directory: apps/server
+        env:
+          MXD_TEST_DB_URL: postgresql://t:t@localhost:5432/t
+        run: pnpm exec tsx test/mxd-data/mxd-data-db-check.ts
+
   build:
     runs-on: ubuntu-latest
     needs: ee-clean-room
