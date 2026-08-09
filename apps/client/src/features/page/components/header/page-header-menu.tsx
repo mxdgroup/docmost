@@ -43,7 +43,12 @@ import { formattedDate } from "@/lib/time.ts";
 import { PageEditModeToggle } from "@/features/user/components/page-state-pref.tsx";
 import MovePageModal from "@/features/page/components/move-page-modal.tsx";
 import { useTimeAgo } from "@/hooks/use-time-ago.tsx";
-import { PageShareModal } from "@/ee/page-permission";
+// MXD: mount the fork's own share control (features/share/share-modal) instead
+// of the EE PageShareModal — the EE modal (a) is off-limits under the clean-room
+// rule and (b) has no concept of share modes, so the view/comment/edit selector
+// (Unit 5) was unreachable while the EE modal was mounted. The core Access panel
+// below already replaces the EE modal's "Access" tab.
+import ShareModal from "@/features/share/components/share-modal.tsx";
 import PageAccessPanel from "@/features/page-access/page-access-panel.tsx";
 import {
   PageVerificationMenuItem,
@@ -106,7 +111,7 @@ export default function PageHeaderMenu({ readOnly }: PageHeaderMenuProps) {
 
       {page && <PageAccessPanel pageId={page.id} readOnly={readOnly} />}
 
-      <PageShareModal readOnly={readOnly} />
+      <ShareModal readOnly={readOnly} />
 
       <Tooltip label={t("Comments")} openDelay={250} withArrow>
         <ActionIcon
