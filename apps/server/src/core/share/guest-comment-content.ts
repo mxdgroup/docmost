@@ -34,7 +34,15 @@ function sanitizeMarks(marks: any[]): any[] {
   });
 }
 
-function sanitizeNode(node: any): any | null {
+// Bound adversarial input from the unauthenticated endpoint: a deeply nested
+// doc would blow the recursion stack, and a very wide/large doc wastes CPU.
+// Both are cheap to cap and well above any legitimate comment.
+const MAX_DEPTH = 20;
+const MAX_NODES = 2000;
+
+function sanitizeNode(node: any, depth: number, budget: { n: number }): any | null {
+  if (depth > MAX_DEPTH) return null;
+  if (budget.n++ > MAX_NODES) return null;
   if (!node || typeof node.type !== 'string') return null;
   if (!ALLOWED_NODES.has(node.type)) return null;
 
@@ -49,7 +57,7 @@ function sanitizeNode(node: any): any | null {
 
   if (Array.isArray(node.content)) {
     const children = node.content
-      .map((child: any) => sanitizeNode(child))
+      .map((child: any) => sanitizeNode(child, depth + 1, budget))
       .filter((child: any) => child !== null);
     if (children.length) clean.content = children;
   }
@@ -58,7 +66,7 @@ function sanitizeNode(node: any): any | null {
 
 // Returns a sanitized copy, or null when nothing survivable remains.
 export function sanitizeGuestCommentContent(content: any): any | null {
-  const doc = sanitizeNode(content);
+  const doc = sanitizeNode(content, 0, { n: 0 });
   if (!doc || doc.type !== 'doc' || !doc.content?.length) return null;
   return doc;
 }

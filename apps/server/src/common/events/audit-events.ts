@@ -76,8 +76,6 @@ export const AuditEvent = {
   // Share
   SHARE_CREATED: 'share.created',
   SHARE_DELETED: 'share.deleted',
-  // MXD fork
-  SHARE_KEY_ROTATED: 'share.key_rotated',
 
   // Import / Export
   PAGE_IMPORTED: 'page.imported',

@@ -63,10 +63,15 @@ function build(opts: {
     validateCanEdit: jest.fn().mockResolvedValue(undefined),
     validateCanView: jest.fn().mockResolvedValue(undefined),
   };
+  // executeTx(db, cb) => db.transaction().execute((trx) => cb(trx))
+  const db = {
+    transaction: () => ({ execute: (fn: any) => fn({} as any) }),
+  } as any;
   const service = new PageAccessManagementService(
     repo as any,
     spaceAbility as any,
     pageAccessService as any,
+    db,
   );
   return { service, repo, pageAccessService };
 }
@@ -77,14 +82,16 @@ describe('PageAccessManagementService', () => {
     await fresh.service.restrict(page, admin, 'w1');
     expect(fresh.repo.insertPageAccess).toHaveBeenCalledWith(
       expect.objectContaining({ accessLevel: 'restricted', creatorId: 'admin' }),
+      expect.anything(),
     );
-    expect(fresh.repo.insertPagePermissions).toHaveBeenCalledWith([
-      expect.objectContaining({ userId: 'admin', role: 'writer' }),
-    ]);
+    expect(fresh.repo.insertPagePermissions).toHaveBeenCalledWith(
+      [expect.objectContaining({ userId: 'admin', role: 'writer' })],
+      expect.anything(),
+    );
 
     const again = build({ accessRow: { id: 'pa1' } });
     const result = await again.service.restrict(page, admin, 'w1');
-    expect(result).toEqual({ id: 'pa1' });
+    expect(result).toEqual({ pageAccess: { id: 'pa1' }, changed: false });
     expect(again.repo.insertPageAccess).not.toHaveBeenCalled();
   });
 

@@ -328,40 +328,6 @@ export class ShareController {
     return this.shareService.updateShare(share.id, updateShareDto);
   }
 
-  // MXD: rotate the share's bearer key. Old links stop resolving instantly;
-  // mode/settings are preserved. For suspected leaks of elevated links.
-  @HttpCode(HttpStatus.OK)
-  @Post('rotate-key')
-  async rotateKey(@Body() shareIdDto: ShareIdDto, @AuthUser() user: User) {
-    const share = await this.shareRepo.findById(shareIdDto.shareId);
-
-    if (!share) {
-      throw new NotFoundException('Share not found');
-    }
-
-    const page = await this.pageRepo.findById(share.pageId);
-    if (!page) {
-      throw new NotFoundException('Page not found');
-    }
-
-    // Same authorization as share update
-    await this.pageAccessService.validateCanEdit(page, user);
-
-    const updated = await this.shareService.rotateShareKey(share.id);
-
-    this.auditService.log({
-      event: AuditEvent.SHARE_KEY_ROTATED,
-      resourceType: AuditResource.SHARE,
-      resourceId: share.id,
-      spaceId: share.spaceId,
-      metadata: {
-        pageId: share.pageId,
-        spaceId: share.spaceId,
-      },
-    });
-
-    return updated;
-  }
 
   @HttpCode(HttpStatus.OK)
   @Post('delete')

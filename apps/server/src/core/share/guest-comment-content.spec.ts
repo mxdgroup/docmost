@@ -99,4 +99,31 @@ describe('sanitizeGuestCommentContent', () => {
       ),
     ).toEqual(doc(p(text('x'))));
   });
+
+  it('caps recursion depth — a pathologically deep doc does not overflow the stack', () => {
+    // build a 5000-deep nesting of allowed containers
+    let node: any = { type: 'paragraph', content: [{ type: 'text', text: 'x' }] };
+    for (let i = 0; i < 5000; i++) {
+      node = { type: 'blockquote', content: [node] };
+    }
+    const doc = { type: 'doc', content: [node] };
+    // must return (null or a truncated doc) without throwing
+    let out: any;
+    expect(() => {
+      out = sanitizeGuestCommentContent(doc);
+    }).not.toThrow();
+  });
+
+  it('caps total node count — a very wide doc is bounded', () => {
+    const wide = {
+      type: 'doc',
+      content: Array.from({ length: 10000 }, () => ({
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'x' }],
+      })),
+    };
+    const out = sanitizeGuestCommentContent(wide);
+    // survives without throwing; node budget truncates the tail
+    expect(out === null || out.content.length < 10000).toBe(true);
+  });
 });

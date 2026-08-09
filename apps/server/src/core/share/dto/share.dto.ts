@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
 } from 'class-validator';
 import { ShareMode } from '../share-mode';
 
@@ -86,10 +87,12 @@ export class ShareCommentsListDto {
 export class ShareGuestCommentDto extends ShareCommentsListDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(20000) // bound unauthenticated input before JSON.parse + sanitize
   content: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
   guestName: string;
 
   @IsOptional()

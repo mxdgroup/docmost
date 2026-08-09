@@ -259,20 +259,6 @@ export class ShareService {
     return { share, page };
   }
 
-  // MXD: rotate the bearer key. The old URL dies immediately; mode and all
-  // other settings are preserved. Used when an elevated (comment/edit) link
-  // is suspected to have leaked.
-  async rotateShareKey(shareId: string) {
-    try {
-      return await this.shareRepo.updateShare(
-        { key: nanoIdGen().toLowerCase() },
-        shareId,
-      );
-    } catch (err) {
-      this.logger.error(err);
-      throw new BadRequestException('Failed to rotate share key');
-    }
-  }
 
   async getSharedPage(dto: ShareInfoDto, workspaceId: string) {
     const share = await this.getShareForPage(dto.pageId, workspaceId);

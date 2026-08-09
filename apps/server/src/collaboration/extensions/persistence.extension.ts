@@ -34,6 +34,20 @@ import {
 } from '../constants';
 import { TransclusionService } from '../../core/page/transclusion/transclusion.service';
 
+// MXD: only mentions authored by an actual authenticated contributor of this
+// store window may raise notifications. A mention node's creatorId is
+// client-supplied, so without this an anonymous edit-share session could inject
+// a mention claiming any user as sender/target and spoof "X mentioned you"
+// emails. editingUserIds only ever contains real user ids (onChange skips
+// anonymous sessions), so it is the authoritative set of legitimate authors.
+export function authorizedUserMentions<T extends { creatorId: string }>(
+  userMentions: T[],
+  authedContributorIds: Iterable<string>,
+): T[] {
+  const authed = new Set(authedContributorIds);
+  return userMentions.filter((m) => authed.has(m.creatorId));
+}
+
 @Injectable()
 export class PersistenceExtension implements Extension {
   private readonly logger = new Logger(PersistenceExtension.name);
@@ -194,7 +208,20 @@ export class PersistenceExtension implements Extension {
 
       const mentions = extractMentions(tiptapJson);
 
-      const userMentions = extractUserMentions(mentions);
+      // MXD: a mention node's creatorId comes from client-supplied attrs, so an
+      // anonymous edit-share session (SHARE_EDIT_ENABLED) could inject a mention
+      // claiming any real user as sender and target, spoofing "X mentioned you"
+      // notifications to internal staff. Guest comments already strip mentions
+      // for this reason; the edit path keeps schema parity, so instead we only
+      // notify for mentions whose creatorId is an ACTUAL authenticated
+      // contributor of this store window (editingUserIds only ever contains
+      // real user ids — onChange skips anonymous sessions). Anonymous-injected
+      // or cross-spoofed mentions have a creatorId outside that set and are
+      // dropped; legitimate mentions by real editors are unaffected.
+      const userMentions = authorizedUserMentions(
+        extractUserMentions(mentions),
+        editingUserIds,
+      );
       const oldMentions = page.content ? extractMentions(page.content) : [];
       const oldMentionedUserIds = extractUserMentions(oldMentions).map(
         (m) => m.entityId,

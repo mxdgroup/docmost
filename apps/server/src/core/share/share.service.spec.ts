@@ -131,14 +131,6 @@ describe('ShareService share mode', () => {
     expect(patch).not.toHaveProperty('mode');
   });
 
-  it('rotateShareKey mints a new key and touches nothing else', async () => {
-    const { service, shareRepo } = buildService({});
-    await service.rotateShareKey('share-1');
-    const patch = shareRepo.updateShare.mock.calls[0][0];
-    expect(Object.keys(patch)).toEqual(['key']);
-    expect(typeof patch.key).toBe('string');
-    expect(patch.key.length).toBeGreaterThan(6);
-  });
 });
 
 describe('ShareService.mintShareCollabToken', () => {

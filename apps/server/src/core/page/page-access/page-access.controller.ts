@@ -110,9 +110,13 @@ export class PageAccessController {
     @AuthWorkspace() workspace: Workspace,
   ) {
     const page = await this.requirePage(dto.pageId, workspace.id);
-    const access = await this.management.restrict(page, user, workspace.id);
-    this.audit(AuditEvent.PAGE_RESTRICTED, page, {});
-    return access;
+    const { pageAccess, changed } = await this.management.restrict(
+      page,
+      user,
+      workspace.id,
+    );
+    if (changed) this.audit(AuditEvent.PAGE_RESTRICTED, page, {});
+    return pageAccess;
   }
 
   @HttpCode(HttpStatus.OK)
@@ -123,8 +127,8 @@ export class PageAccessController {
     @AuthWorkspace() workspace: Workspace,
   ) {
     const page = await this.requirePage(dto.pageId, workspace.id);
-    await this.management.open(page, user);
-    this.audit(AuditEvent.PAGE_RESTRICTION_REMOVED, page, {});
+    const { changed } = await this.management.open(page, user);
+    if (changed) this.audit(AuditEvent.PAGE_RESTRICTION_REMOVED, page, {});
   }
 
   @HttpCode(HttpStatus.OK)

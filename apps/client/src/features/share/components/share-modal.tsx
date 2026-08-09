@@ -15,13 +15,11 @@ import {
   IconExternalLink,
   IconWorld,
   IconLock,
-  IconRefresh,
 } from "@tabler/icons-react";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   useCreateShareMutation,
   useDeleteShareMutation,
-  useRotateShareKeyMutation,
   useShareForPageQuery,
   useUpdateShareMutation,
 } from "@/features/share/queries/share-query.ts";
@@ -64,7 +62,6 @@ export default function ShareModal({ readOnly }: ShareModalProps) {
   const createShareMutation = useCreateShareMutation();
   const updateShareMutation = useUpdateShareMutation();
   const deleteShareMutation = useDeleteShareMutation();
-  const rotateShareKeyMutation = useRotateShareKeyMutation();
   // MXD: elevated share modes. The server enforces; flags only drive UI.
   const modeOptions = useMemo(() => {
     const options = [{ label: t("Can view"), value: "view" }];
@@ -151,13 +148,6 @@ export default function ShareModal({ readOnly }: ShareModalProps) {
     }
   };
 
-  const handleRotateKey = async () => {
-    try {
-      await rotateShareKeyMutation.mutateAsync(share.id);
-    } catch {
-      // notification shown by the mutation
-    }
-  };
 
   const shareLink = useMemo(
     () => (
@@ -178,24 +168,9 @@ export default function ShareModal({ readOnly }: ShareModalProps) {
         >
           <IconExternalLink size={16} />
         </ActionIcon>
-        {!readOnly && pageIsShared && (
-          <Tooltip
-            label={t("Rotate link — the current link stops working")}
-            withArrow
-          >
-            <ActionIcon
-              variant="default"
-              size="sm"
-              onClick={handleRotateKey}
-              loading={rotateShareKeyMutation.isPending}
-            >
-              <IconRefresh size={16} />
-            </ActionIcon>
-          </Tooltip>
-        )}
       </Group>
     ),
-    [publicLink, readOnly, pageIsShared, rotateShareKeyMutation.isPending],
+    [publicLink],
   );
 
   return (

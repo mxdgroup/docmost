@@ -17,6 +17,9 @@ import {
 import { PageAccessLevel } from '../../../common/helpers/types/permission';
 import { PageAccessService } from './page-access.service';
 import { PaginationOptions } from '@docmost/db/pagination/pagination-options';
+import { InjectKysely } from 'nestjs-kysely';
+import { KyselyDB } from '@docmost/db/types/kysely.types';
+import { executeTx } from '@docmost/db/utils';
 
 export enum PagePermissionRole {
   WRITER = 'writer',
@@ -29,6 +32,7 @@ export class PageAccessManagementService {
     private readonly pagePermissionRepo: PagePermissionRepo,
     private readonly spaceAbility: SpaceAbilityFactory,
     private readonly pageAccessService: PageAccessService,
+    @InjectKysely() private readonly db: KyselyDB,
   ) {}
 
   // Behavior 8: space admins always manage; otherwise the actor must be a
@@ -50,6 +54,7 @@ export class PageAccessManagementService {
   }
 
   // Behavior 1: restrict; idempotent; seeds the actor as writer.
+  // Returns { changed } so the caller only audits a real state change.
   async restrict(page: Page, user: User, workspaceId: string) {
     // Pre-restriction the page has no member list — actor needs page edit
     // rights under the CURRENT rules (space-level, or inherited restriction).
@@ -58,34 +63,49 @@ export class PageAccessManagementService {
     const existing = await this.pagePermissionRepo.findPageAccessByPageId(
       page.id,
     );
-    if (existing) return existing;
+    if (existing) return { pageAccess: existing, changed: false };
 
-    const pageAccess = await this.pagePermissionRepo.insertPageAccess({
-      pageId: page.id,
-      spaceId: page.spaceId,
-      workspaceId,
-      accessLevel: PageAccessLevel.RESTRICTED,
-      creatorId: user.id,
+    // The access row and its seed writer are one atomic act: a failure between
+    // them would strand a restricted page with zero members (locked out for
+    // everyone but a space admin). Wrap both in a single transaction so the
+    // ">=1 writer from birth" invariant can never be half-applied.
+    const pageAccess = await executeTx(this.db, async (trx) => {
+      const created = await this.pagePermissionRepo.insertPageAccess(
+        {
+          pageId: page.id,
+          spaceId: page.spaceId,
+          workspaceId,
+          accessLevel: PageAccessLevel.RESTRICTED,
+          creatorId: user.id,
+        },
+        trx,
+      );
+      await this.pagePermissionRepo.insertPagePermissions(
+        [
+          {
+            pageAccessId: created.id,
+            userId: user.id,
+            role: PagePermissionRole.WRITER,
+            addedById: user.id,
+          },
+        ],
+        trx,
+      );
+      return created;
     });
-    await this.pagePermissionRepo.insertPagePermissions([
-      {
-        pageAccessId: pageAccess.id,
-        userId: user.id,
-        role: PagePermissionRole.WRITER,
-        addedById: user.id,
-      },
-    ]);
-    return pageAccess;
+    return { pageAccess, changed: true };
   }
 
   // Behavior 2: open; idempotent; members cascade with the access row.
+  // Returns { changed } so the caller only audits a real state change.
   async open(page: Page, user: User) {
     const existing = await this.pagePermissionRepo.findPageAccessByPageId(
       page.id,
     );
-    if (!existing) return;
+    if (!existing) return { changed: false };
     await this.assertCanManage(page, user);
     await this.pagePermissionRepo.deletePageAccess(page.id);
+    return { changed: true };
   }
 
   // Behavior 3: any user who can access the page may list members.
