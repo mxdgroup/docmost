@@ -22,6 +22,7 @@ import { getFieldType } from '../field-types/field-types.registry';
 import {
   ViewConfig,
   sanitizeViewConfig,
+  validateViewConfig,
 } from '../views/view-config';
 import {
   compileFilter,
@@ -171,17 +172,22 @@ export class MxdRecordService {
     const fields = await this.fieldRepo.listByTable(ctx.workspaceId, tableId);
     const fieldsById = new Map(fields.map((f) => [f.id, f]));
 
-    let rawConfig: ViewConfig = opts.config ?? {};
+    let config: ViewConfig;
     if (opts.viewId) {
+      // Stored view: sanitize against current fields so a later field deletion
+      // doesn't break it (resilient, §19/§33).
       const view = await this.viewRepo.findById(
         ctx.workspaceId,
         tableId,
         opts.viewId,
       );
       if (!view) throw new NotFoundException('View not found');
-      rawConfig = (view.config ?? {}) as ViewConfig;
+      config = sanitizeViewConfig(fields, (view.config ?? {}) as ViewConfig);
+    } else {
+      // Inline ad-hoc config provided this request: validate strictly so a bad
+      // operator/field is a clear 400, not a silently-ignored filter.
+      config = validateViewConfig(fields, opts.config ?? {});
     }
-    const config = sanitizeViewConfig(fields, rawConfig);
 
     const where = config.filter
       ? compileFilter(fieldsById, config.filter)

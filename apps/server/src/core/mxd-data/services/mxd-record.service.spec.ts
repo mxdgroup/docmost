@@ -33,6 +33,7 @@ function make(overrides: any = {}) {
       .mockResolvedValue({ id: 'r1', version: 3, data: { f_name: 'old' } }),
     updateWithVersion: jest.fn(),
     softDeleteWithVersion: jest.fn(),
+    queryView: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     ...overrides,
   };
   const viewRepo = { findById: jest.fn() };
@@ -118,6 +119,50 @@ describe('MxdRecordService', () => {
     await expect(
       service.deleteRecord(ctx, 't1', 'r1', 1),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('query: inline config with an illegal operator is rejected (400)', async () => {
+    const { service } = make();
+    await expect(
+      service.queryRecords(ctx, 't1', {
+        config: {
+          filter: {
+            combinator: 'and',
+            conditions: [{ fieldId: 'f_age', op: 'contains' as any, value: 'x' }],
+          },
+        },
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('query: valid inline filter reaches queryView', async () => {
+    const { service, recordRepo } = make();
+    await service.queryRecords(ctx, 't1', {
+      config: {
+        filter: {
+          combinator: 'and',
+          conditions: [{ fieldId: 'f_age', op: 'gt', value: 5 }],
+        },
+      },
+    });
+    expect(recordRepo.queryView).toHaveBeenCalled();
+  });
+
+  it('query: a stored view with a now-illegal condition is sanitized, not rejected', async () => {
+    const { service, recordRepo, viewRepo } = make();
+    viewRepo.findById.mockResolvedValue({
+      id: 'v1',
+      config: {
+        filter: {
+          combinator: 'and',
+          conditions: [{ fieldId: 'f_age', op: 'contains', value: 'x' }],
+        },
+      },
+    });
+    await expect(
+      service.queryRecords(ctx, 't1', { viewId: 'v1' }),
+    ).resolves.toBeTruthy();
+    expect(recordRepo.queryView).toHaveBeenCalled();
   });
 
   it('caps the list limit at 200', async () => {
