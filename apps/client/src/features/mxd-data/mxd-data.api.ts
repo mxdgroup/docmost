@@ -83,3 +83,41 @@ export const mxdAddField = (input: {
   config?: Record<string, any>;
 }): Promise<MxdField> =>
   api.post("/mxd/fields/add", input).then((r) => r.data);
+
+export interface MxdView {
+  id: string;
+  tableId: string;
+  name: string;
+  type: "grid" | "list" | "board" | "calendar" | "gallery";
+  config: Record<string, any>;
+  position: number;
+}
+
+export const mxdListViews = (tableId: string): Promise<MxdView[]> =>
+  api.post("/mxd/views/list", { tableId }).then((r) => r.data);
+
+export const mxdCreateView = (input: {
+  tableId: string;
+  name?: string;
+  type?: string;
+  config?: Record<string, any>;
+}): Promise<MxdView> =>
+  api.post("/mxd/views/create", input).then((r) => r.data);
+
+export const mxdUpdateView = (input: {
+  tableId: string;
+  viewId: string;
+  type?: string;
+  config?: Record<string, any>;
+}): Promise<MxdView> =>
+  api.post("/mxd/views/config", input).then((r) => r.data);
+
+// Query records THROUGH a view (server applies the view's filter/sort).
+export const mxdQueryRecords = (input: {
+  tableId: string;
+  viewId?: string;
+  config?: Record<string, any>;
+  limit?: number;
+  offset?: number;
+}): Promise<MxdRecordPage> =>
+  api.post("/mxd/records/query", input).then((r) => r.data);
