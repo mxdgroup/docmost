@@ -44,13 +44,19 @@ function make(opts: {
     stripField: jest.fn().mockResolvedValue(undefined),
     replaceData: jest.fn().mockResolvedValue(undefined),
   };
+  const access = {
+    authorizeRead: jest.fn().mockResolvedValue(undefined),
+    authorizeWrite: jest.fn().mockResolvedValue(undefined),
+    canRead: jest.fn().mockResolvedValue(true),
+  };
   const service = new MxdFieldService(
     fakeDb,
     tableRepo as any,
     fieldRepo as any,
     recordRepo as any,
+    access as any,
   );
-  return { service, tableRepo, fieldRepo, recordRepo };
+  return { service, tableRepo, fieldRepo, recordRepo, access };
 }
 
 describe('MxdFieldService', () => {

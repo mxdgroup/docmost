@@ -102,7 +102,7 @@ export class MxdDataController {
   ) {}
 
   private ctx(user: User, workspace: Workspace): MxdContext {
-    return { workspaceId: workspace.id, userId: user.id };
+    return { workspaceId: workspace.id, userId: user.id, user };
   }
 
   // ---- tables

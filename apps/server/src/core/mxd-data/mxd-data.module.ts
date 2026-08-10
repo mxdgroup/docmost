@@ -5,9 +5,11 @@ import { MxdTableService } from './services/mxd-table.service';
 import { MxdFieldService } from './services/mxd-field.service';
 import { MxdRecordService } from './services/mxd-record.service';
 import { MxdDataPlatformGuard } from './mxd-data-platform.guard';
+import { MxdAccessService } from './mxd-access.service';
 
 // MXD data platform feature module (roadmap Phase 4). Repos come from the global
-// MxdDataRepoModule; EnvironmentService (for the feature guard) is global.
+// MxdDataRepoModule; PageAccessService, SpaceAbilityFactory and PageRepo (used
+// by MxdAccessService for authz) are all provided by global modules.
 @Module({
   imports: [MxdDataRepoModule],
   controllers: [MxdDataController],
@@ -15,6 +17,7 @@ import { MxdDataPlatformGuard } from './mxd-data-platform.guard';
     MxdTableService,
     MxdFieldService,
     MxdRecordService,
+    MxdAccessService,
     MxdDataPlatformGuard,
   ],
   exports: [MxdTableService, MxdFieldService, MxdRecordService],

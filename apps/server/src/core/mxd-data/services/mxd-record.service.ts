@@ -12,6 +12,7 @@ import {
 } from '@docmost/db/repos/mxd-data/mxd-record.repo';
 import { MxdField, MxdRecord } from '@docmost/db/types/entity.types';
 import { MxdContext } from '../mxd-context';
+import { MxdAccessService } from '../mxd-access.service';
 import {
   FieldConfig,
   FieldValidationError,
@@ -27,11 +28,22 @@ export class MxdRecordService {
     private readonly tableRepo: MxdTableRepo,
     private readonly fieldRepo: MxdFieldRepo,
     private readonly recordRepo: MxdRecordRepo,
+    private readonly access: MxdAccessService,
   ) {}
 
-  private async requireTable(ctx: MxdContext, tableId: string) {
+  // Load the table scoped to the workspace, then authorize against the table's
+  // page/space — a valid table id is never sufficient on its own (§3/§5).
+  private async requireTableRead(ctx: MxdContext, tableId: string) {
     const table = await this.tableRepo.findById(ctx.workspaceId, tableId);
     if (!table) throw new NotFoundException('Table not found');
+    await this.access.authorizeRead(ctx, table);
+    return table;
+  }
+
+  private async requireTableWrite(ctx: MxdContext, tableId: string) {
+    const table = await this.tableRepo.findById(ctx.workspaceId, tableId);
+    if (!table) throw new NotFoundException('Table not found');
+    await this.access.authorizeWrite(ctx, table);
     return table;
   }
 
@@ -81,7 +93,7 @@ export class MxdRecordService {
     tableId: string,
     cells: Record<string, unknown>,
   ): Promise<MxdRecord> {
-    await this.requireTable(ctx, tableId);
+    await this.requireTableWrite(ctx, tableId);
     const fields = await this.fieldRepo.listByTable(ctx.workspaceId, tableId);
     const data = this.validateCells(fields, cells);
     const position = (await this.recordRepo.maxPosition(
@@ -105,7 +117,7 @@ export class MxdRecordService {
     tableId: string,
     recordId: string,
   ): Promise<MxdRecord> {
-    await this.requireTable(ctx, tableId);
+    await this.requireTableRead(ctx, tableId);
     const record = await this.recordRepo.findById(
       ctx.workspaceId,
       tableId,
@@ -120,7 +132,7 @@ export class MxdRecordService {
     tableId: string,
     opts: { limit?: number; offset?: number },
   ): Promise<MxdRecordPage> {
-    await this.requireTable(ctx, tableId);
+    await this.requireTableRead(ctx, tableId);
     const limit = Math.min(
       Math.max(1, opts.limit ?? RECORD_LIST_DEFAULT),
       RECORD_LIST_MAX,
@@ -138,7 +150,7 @@ export class MxdRecordService {
     expectedVersion: number,
     cellPatch: Record<string, unknown>,
   ): Promise<MxdRecord> {
-    await this.requireTable(ctx, tableId);
+    await this.requireTableWrite(ctx, tableId);
     const current = await this.recordRepo.findById(
       ctx.workspaceId,
       tableId,
@@ -172,7 +184,7 @@ export class MxdRecordService {
     recordId: string,
     expectedVersion: number,
   ): Promise<void> {
-    await this.requireTable(ctx, tableId);
+    await this.requireTableWrite(ctx, tableId);
     const deleted = await this.recordRepo.softDeleteWithVersion(
       ctx.workspaceId,
       tableId,
@@ -199,7 +211,13 @@ export class MxdRecordService {
     tableId: string,
     recordId: string,
   ): Promise<MxdRecord> {
-    const source = await this.getRecord(ctx, tableId, recordId);
+    await this.requireTableWrite(ctx, tableId);
+    const source = await this.recordRepo.findById(
+      ctx.workspaceId,
+      tableId,
+      recordId,
+    );
+    if (!source) throw new NotFoundException('Record not found');
     const position =
       (await this.recordRepo.maxPosition(ctx.workspaceId, tableId)) + 1;
     return this.recordRepo.insert({

@@ -10,6 +10,7 @@ import { MxdFieldRepo } from '@docmost/db/repos/mxd-data/mxd-field.repo';
 import { MxdRecordRepo } from '@docmost/db/repos/mxd-data/mxd-record.repo';
 import { MxdField } from '@docmost/db/types/entity.types';
 import { MxdContext } from '../mxd-context';
+import { MxdAccessService } from '../mxd-access.service';
 import { FieldConfig, FieldValidationError } from '../field-types/field-type';
 import {
   getFieldType,
@@ -23,15 +24,26 @@ export class MxdFieldService {
     private readonly tableRepo: MxdTableRepo,
     private readonly fieldRepo: MxdFieldRepo,
     private readonly recordRepo: MxdRecordRepo,
+    private readonly access: MxdAccessService,
   ) {}
 
-  private async requireTable(ctx: MxdContext, tableId: string) {
+  // Load the table scoped to the workspace, then authorize against its
+  // page/space. Field mutations are schema changes → require edit (write).
+  private async requireTable(ctx: MxdContext, tableId: string, write: boolean) {
     const table = await this.tableRepo.findById(ctx.workspaceId, tableId);
     if (!table) throw new NotFoundException('Table not found');
+    if (write) await this.access.authorizeWrite(ctx, table);
+    else await this.access.authorizeRead(ctx, table);
     return table;
   }
 
-  private async requireField(ctx: MxdContext, tableId: string, fieldId: string) {
+  private async requireField(
+    ctx: MxdContext,
+    tableId: string,
+    fieldId: string,
+    write: boolean,
+  ) {
+    await this.requireTable(ctx, tableId, write);
     const field = await this.fieldRepo.findById(
       ctx.workspaceId,
       tableId,
@@ -42,7 +54,7 @@ export class MxdFieldService {
   }
 
   async listFields(ctx: MxdContext, tableId: string): Promise<MxdField[]> {
-    await this.requireTable(ctx, tableId);
+    await this.requireTable(ctx, tableId, false);
     return this.fieldRepo.listByTable(ctx.workspaceId, tableId);
   }
 
@@ -51,7 +63,7 @@ export class MxdFieldService {
     tableId: string,
     input: { name: string; type: string; config?: FieldConfig },
   ): Promise<MxdField> {
-    await this.requireTable(ctx, tableId);
+    await this.requireTable(ctx, tableId, true);
     const name = input.name?.trim();
     if (!name) throw new BadRequestException('Field name is required');
     if (!isKnownFieldType(input.type)) {
@@ -79,7 +91,7 @@ export class MxdFieldService {
     fieldId: string,
     name: string,
   ): Promise<MxdField> {
-    await this.requireTable(ctx, tableId);
+    await this.requireTable(ctx, tableId, true);
     const trimmed = name?.trim();
     if (!trimmed) throw new BadRequestException('Field name is required');
     const fields = await this.fieldRepo.listByTable(ctx.workspaceId, tableId);
@@ -108,7 +120,7 @@ export class MxdFieldService {
     fieldId: string,
     position: number,
   ): Promise<MxdField> {
-    await this.requireField(ctx, tableId, fieldId);
+    await this.requireField(ctx, tableId, fieldId, true);
     const updated = await this.fieldRepo.update(ctx.workspaceId, tableId, fieldId, {
       position,
     });
@@ -122,7 +134,7 @@ export class MxdFieldService {
     fieldId: string,
     config: FieldConfig,
   ): Promise<MxdField> {
-    await this.requireField(ctx, tableId, fieldId);
+    await this.requireField(ctx, tableId, fieldId, true);
     const updated = await this.fieldRepo.update(ctx.workspaceId, tableId, fieldId, {
       config: (config ?? {}) as any,
     });
@@ -142,8 +154,7 @@ export class MxdFieldService {
     newType: string,
     opts: { clearIncompatible?: boolean; config?: FieldConfig } = {},
   ): Promise<MxdField> {
-    await this.requireTable(ctx, tableId);
-    const field = await this.requireField(ctx, tableId, fieldId);
+    const field = await this.requireField(ctx, tableId, fieldId, true);
     if (!isKnownFieldType(newType)) {
       throw new BadRequestException(`Unknown field type: ${newType}`);
     }
@@ -240,7 +251,7 @@ export class MxdFieldService {
     tableId: string,
     fieldId: string,
   ): Promise<void> {
-    const table = await this.requireTable(ctx, tableId);
+    const table = await this.requireTable(ctx, tableId, true);
     const fields = await this.fieldRepo.listByTable(ctx.workspaceId, tableId);
     if (!fields.some((f) => f.id === fieldId)) {
       throw new NotFoundException('Field not found');
