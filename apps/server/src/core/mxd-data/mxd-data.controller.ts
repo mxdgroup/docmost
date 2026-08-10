@@ -32,6 +32,7 @@ import { MxdDataPlatformGuard } from './mxd-data-platform.guard';
 import { MxdTableService } from './services/mxd-table.service';
 import { MxdFieldService } from './services/mxd-field.service';
 import { MxdRecordService } from './services/mxd-record.service';
+import { MxdViewService } from './services/mxd-view.service';
 
 class CreateTableDto {
   @IsString() pageId: string;
@@ -91,6 +92,26 @@ class UpdateRecordDto extends RecordIdDto {
 class DeleteRecordDto extends RecordIdDto {
   @IsInt() version: number;
 }
+class CreateViewDto {
+  @IsString() tableId: string;
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsString() type?: string;
+  @IsOptional() @IsObject() config?: Record<string, unknown>;
+}
+class ViewIdDto {
+  @IsString() tableId: string;
+  @IsString() viewId: string;
+}
+class RenameViewDto extends ViewIdDto {
+  @IsString() name: string;
+}
+class UpdateViewDto extends ViewIdDto {
+  @IsOptional() @IsString() type?: string;
+  @IsOptional() @IsObject() config?: Record<string, unknown>;
+}
+class ReorderViewDto extends ViewIdDto {
+  @IsInt() position: number;
+}
 
 @UseGuards(JwtAuthGuard, MxdDataPlatformGuard)
 @Controller('mxd')
@@ -99,6 +120,7 @@ export class MxdDataController {
     private readonly tableService: MxdTableService,
     private readonly fieldService: MxdFieldService,
     private readonly recordService: MxdRecordService,
+    private readonly viewService: MxdViewService,
   ) {}
 
   private ctx(user: User, workspace: Workspace): MxdContext {
@@ -348,5 +370,100 @@ export class MxdDataController {
       dto.tableId,
       dto.recordId,
     );
+  }
+
+  // ---- views
+  @HttpCode(HttpStatus.OK)
+  @Post('views/create')
+  createView(
+    @Body() dto: CreateViewDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.viewService.createView(this.ctx(user, ws), dto.tableId, {
+      name: dto.name,
+      type: dto.type,
+      config: dto.config,
+    });
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('views/list')
+  listViews(
+    @Body() dto: TableIdDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.viewService.listViews(this.ctx(user, ws), dto.tableId);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('views/get')
+  getView(
+    @Body() dto: ViewIdDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.viewService.getView(this.ctx(user, ws), dto.tableId, dto.viewId);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('views/rename')
+  renameView(
+    @Body() dto: RenameViewDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.viewService.renameView(
+      this.ctx(user, ws),
+      dto.tableId,
+      dto.viewId,
+      dto.name,
+    );
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('views/config')
+  updateView(
+    @Body() dto: UpdateViewDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.viewService.updateConfig(
+      this.ctx(user, ws),
+      dto.tableId,
+      dto.viewId,
+      { type: dto.type, config: dto.config },
+    );
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('views/reorder')
+  reorderView(
+    @Body() dto: ReorderViewDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.viewService.reorderView(
+      this.ctx(user, ws),
+      dto.tableId,
+      dto.viewId,
+      dto.position,
+    );
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('views/delete')
+  async deleteView(
+    @Body() dto: ViewIdDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    await this.viewService.deleteView(
+      this.ctx(user, ws),
+      dto.tableId,
+      dto.viewId,
+    );
+    return { success: true };
   }
 }

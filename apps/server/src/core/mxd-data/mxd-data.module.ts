@@ -4,6 +4,7 @@ import { MxdDataController } from './mxd-data.controller';
 import { MxdTableService } from './services/mxd-table.service';
 import { MxdFieldService } from './services/mxd-field.service';
 import { MxdRecordService } from './services/mxd-record.service';
+import { MxdViewService } from './services/mxd-view.service';
 import { MxdDataPlatformGuard } from './mxd-data-platform.guard';
 import { MxdAccessService } from './mxd-access.service';
 
@@ -17,9 +18,15 @@ import { MxdAccessService } from './mxd-access.service';
     MxdTableService,
     MxdFieldService,
     MxdRecordService,
+    MxdViewService,
     MxdAccessService,
     MxdDataPlatformGuard,
   ],
-  exports: [MxdTableService, MxdFieldService, MxdRecordService],
+  exports: [
+    MxdTableService,
+    MxdFieldService,
+    MxdRecordService,
+    MxdViewService,
+  ],
 })
 export class MxdDataModule {}
