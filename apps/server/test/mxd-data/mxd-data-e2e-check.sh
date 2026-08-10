@@ -53,6 +53,18 @@ INJ=$(post mxd/records/query '{"tableId":"'$TID'","config":{"filter":{"combinato
 check "$(echo "$INJ" | jd "d['total']")" "0" "SQL-injection value inert (0 rows)"
 check "$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST "$B/mxd/tables/get" -H 'Content-Type: application/json' -d '{"tableId":"'$TID'"}')" "401" "unauthenticated -> 401"
 
+# --- relations (roadmap §30-32)
+CO=$(post mxd/tables/create '{"pageId":"'$PAGE'","title":"Companies"}')
+CO_T=$(echo "$CO" | jd "d['id']"); CO_P=$(echo "$CO" | jd "d['primaryFieldId']")
+REL_F=$(post mxd/fields/add '{"tableId":"'$TID'","name":"Employer","type":"relation","config":{"relatedTableId":"'$CO_T'","single":true}}' | jd "d['id']")
+check "$([ -n "$REL_F" ] && echo ok)" "ok" "relation field created (valid relatedTableId)"
+check "$(code mxd/fields/add '{"tableId":"'$TID'","name":"Bad","type":"relation","config":{"relatedTableId":"00000000-0000-0000-0000-000000000000"}}')" "400" "relation to non-existent table -> 400"
+ACME=$(post mxd/records/create '{"tableId":"'$CO_T'","cells":{"'$CO_P'":"Acme"}}' | jd "d['id']")
+check "$(code mxd/relations/link '{"tableId":"'$TID'","fieldId":"'$REL_F'","fromRecordId":"'$R1ID'","toRecordId":"'$ACME'"}')" "200" "link record->Acme"
+check "$(post mxd/relations/list '{"tableId":"'$TID'","fieldId":"'$REL_F'","recordId":"'$R1ID'"}' | jd "d[0]['data']['$CO_P']")" "Acme" "listRelated returns Acme"
+# IDOR: linking to a People record (not in Companies) via Employer -> 400
+check "$(code mxd/relations/link '{"tableId":"'$TID'","fieldId":"'$REL_F'","fromRecordId":"'$R1ID'","toRecordId":"'$R1ID'"}')" "400" "link outside related table -> 400 (IDOR)"
+
 rm -f "$CJ"
 echo ""; echo "E2E: $pass passed, $fail failed"
 exit $fail

@@ -53,6 +53,30 @@ export class MxdFieldService {
     return field;
   }
 
+  // Per-type config validation. For a relation field the related table must be a
+  // real table in the caller's workspace (never a client-asserted foreign id).
+  private async validateTypeConfig(
+    ctx: MxdContext,
+    type: string,
+    config: FieldConfig | undefined,
+  ): Promise<void> {
+    if (type === 'relation') {
+      const relatedTableId = (config ?? {}).relatedTableId;
+      if (!relatedTableId || typeof relatedTableId !== 'string') {
+        throw new BadRequestException(
+          'A relation field requires a relatedTableId',
+        );
+      }
+      const related = await this.tableRepo.findById(
+        ctx.workspaceId,
+        relatedTableId,
+      );
+      if (!related) {
+        throw new BadRequestException('Related table not found in workspace');
+      }
+    }
+  }
+
   async listFields(ctx: MxdContext, tableId: string): Promise<MxdField[]> {
     await this.requireTable(ctx, tableId, false);
     return this.fieldRepo.listByTable(ctx.workspaceId, tableId);
@@ -73,6 +97,7 @@ export class MxdFieldService {
     if (existing.some((f) => f.name.toLowerCase() === name.toLowerCase())) {
       throw new BadRequestException(`A field named "${name}" already exists`);
     }
+    await this.validateTypeConfig(ctx, input.type, input.config);
     const position =
       (await this.fieldRepo.maxPosition(ctx.workspaceId, tableId)) + 1;
     return this.fieldRepo.insert({

@@ -33,6 +33,7 @@ import { MxdTableService } from './services/mxd-table.service';
 import { MxdFieldService } from './services/mxd-field.service';
 import { MxdRecordService } from './services/mxd-record.service';
 import { MxdViewService } from './services/mxd-view.service';
+import { MxdRelationService } from './services/mxd-relation.service';
 
 class CreateTableDto {
   @IsString() pageId: string;
@@ -119,6 +120,17 @@ class UpdateViewDto extends ViewIdDto {
 class ReorderViewDto extends ViewIdDto {
   @IsInt() position: number;
 }
+class RelationEdgeDto {
+  @IsString() tableId: string;
+  @IsString() fieldId: string;
+  @IsString() fromRecordId: string;
+  @IsString() toRecordId: string;
+}
+class RelationListDto {
+  @IsString() tableId: string;
+  @IsString() fieldId: string;
+  @IsString() recordId: string;
+}
 
 @UseGuards(JwtAuthGuard, MxdDataPlatformGuard)
 @Controller('mxd')
@@ -128,6 +140,7 @@ export class MxdDataController {
     private readonly fieldService: MxdFieldService,
     private readonly recordService: MxdRecordService,
     private readonly viewService: MxdViewService,
+    private readonly relationService: MxdRelationService,
   ) {}
 
   private ctx(user: User, workspace: Workspace): MxdContext {
@@ -487,5 +500,36 @@ export class MxdDataController {
       dto.viewId,
     );
     return { success: true };
+  }
+
+  // ---- relations
+  @HttpCode(HttpStatus.OK)
+  @Post('relations/link')
+  linkRelation(
+    @Body() dto: RelationEdgeDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.relationService.link(this.ctx(user, ws), dto);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('relations/unlink')
+  unlinkRelation(
+    @Body() dto: RelationEdgeDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.relationService.unlink(this.ctx(user, ws), dto);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('relations/list')
+  listRelated(
+    @Body() dto: RelationListDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.relationService.listRelated(this.ctx(user, ws), dto);
   }
 }
