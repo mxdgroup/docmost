@@ -35,6 +35,7 @@ function make(overrides: any = {}) {
     softDeleteWithVersion: jest.fn(),
     ...overrides,
   };
+  const viewRepo = { findById: jest.fn() };
   const access = {
     authorizeRead: jest.fn().mockResolvedValue(undefined),
     authorizeWrite: jest.fn().mockResolvedValue(undefined),
@@ -44,9 +45,10 @@ function make(overrides: any = {}) {
     tableRepo as any,
     fieldRepo as any,
     recordRepo as any,
+    viewRepo as any,
     access as any,
   );
-  return { service, tableRepo, fieldRepo, recordRepo, access };
+  return { service, tableRepo, fieldRepo, recordRepo, viewRepo, access };
 }
 
 describe('MxdRecordService', () => {

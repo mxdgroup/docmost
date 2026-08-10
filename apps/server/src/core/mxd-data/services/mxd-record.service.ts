@@ -10,6 +10,7 @@ import {
   MxdRecordPage,
   MxdRecordRepo,
 } from '@docmost/db/repos/mxd-data/mxd-record.repo';
+import { MxdViewRepo } from '@docmost/db/repos/mxd-data/mxd-view.repo';
 import { MxdField, MxdRecord } from '@docmost/db/types/entity.types';
 import { MxdContext } from '../mxd-context';
 import { MxdAccessService } from '../mxd-access.service';
@@ -18,6 +19,14 @@ import {
   FieldValidationError,
 } from '../field-types/field-type';
 import { getFieldType } from '../field-types/field-types.registry';
+import {
+  ViewConfig,
+  sanitizeViewConfig,
+} from '../views/view-config';
+import {
+  compileFilter,
+  orderBySpecs,
+} from '../views/filter-compiler';
 
 const RECORD_LIST_MAX = 200;
 const RECORD_LIST_DEFAULT = 50;
@@ -28,6 +37,7 @@ export class MxdRecordService {
     private readonly tableRepo: MxdTableRepo,
     private readonly fieldRepo: MxdFieldRepo,
     private readonly recordRepo: MxdRecordRepo,
+    private readonly viewRepo: MxdViewRepo,
     private readonly access: MxdAccessService,
   ) {}
 
@@ -139,6 +149,57 @@ export class MxdRecordService {
     );
     const offset = Math.max(0, opts.offset ?? 0);
     return this.recordRepo.list(ctx.workspaceId, tableId, limit, offset);
+  }
+
+  // Query records through a view: apply the view's (or an inline) filter + sort,
+  // compiled to safe parameterized SQL. A stored view's config is sanitized
+  // against the current fields (a deleted field silently drops from the config)
+  // so the view never breaks; an inline config is validated strictly by the
+  // caller/DTO layer. Filtering/sorting is display refinement over records the
+  // caller can already read — read authz is still enforced here.
+  async queryRecords(
+    ctx: MxdContext,
+    tableId: string,
+    opts: {
+      viewId?: string;
+      config?: ViewConfig;
+      limit?: number;
+      offset?: number;
+    },
+  ): Promise<MxdRecordPage> {
+    await this.requireTableRead(ctx, tableId);
+    const fields = await this.fieldRepo.listByTable(ctx.workspaceId, tableId);
+    const fieldsById = new Map(fields.map((f) => [f.id, f]));
+
+    let rawConfig: ViewConfig = opts.config ?? {};
+    if (opts.viewId) {
+      const view = await this.viewRepo.findById(
+        ctx.workspaceId,
+        tableId,
+        opts.viewId,
+      );
+      if (!view) throw new NotFoundException('View not found');
+      rawConfig = (view.config ?? {}) as ViewConfig;
+    }
+    const config = sanitizeViewConfig(fields, rawConfig);
+
+    const where = config.filter
+      ? compileFilter(fieldsById, config.filter)
+      : null;
+    const order = orderBySpecs(fieldsById, config.sorts ?? []);
+    const limit = Math.min(
+      Math.max(1, opts.limit ?? RECORD_LIST_DEFAULT),
+      RECORD_LIST_MAX,
+    );
+    const offset = Math.max(0, opts.offset ?? 0);
+    return this.recordRepo.queryView(
+      ctx.workspaceId,
+      tableId,
+      where,
+      order,
+      limit,
+      offset,
+    );
   }
 
   // Optimistic-concurrency update. The caller passes the version it read; a

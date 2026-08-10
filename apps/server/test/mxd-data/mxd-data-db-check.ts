@@ -38,6 +38,7 @@ const updateWithVersion = (w: string, t: string, id: string, ver: number, data: 
     .returningAll().executeTakeFirst();
 
 async function main() {
+  await sql`DROP TABLE IF EXISTS mxd_record_links, mxd_records, mxd_views, mxd_fields, mxd_tables, workspaces, spaces, pages, users CASCADE`.execute(db);
   await sql`CREATE OR REPLACE FUNCTION gen_uuid_v7() RETURNS uuid LANGUAGE sql AS $$ SELECT gen_random_uuid() $$`.execute(db);
   for (const t of ['workspaces', 'spaces', 'pages', 'users']) {
     await sql`CREATE TABLE ${sql.raw(t)} (id uuid primary key default gen_uuid_v7())`.execute(db);

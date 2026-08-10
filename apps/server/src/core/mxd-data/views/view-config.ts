@@ -56,6 +56,55 @@ function isGroup(node: FilterCondition | FilterGroup): node is FilterGroup {
   return (node as FilterGroup).combinator !== undefined;
 }
 
+// Drop any config references to fields that no longer exist on the table, so a
+// STORED view keeps working after a field is deleted (roadmap §19/§33) instead
+// of throwing. Safe: filters/sorts are display refinement over records the
+// caller can already read — dropping one never widens access. Used on the query
+// path; validateViewConfig (strict) is still used when SAVING a config.
+export function sanitizeViewConfig(
+  fields: MxdField[],
+  config: ViewConfig | undefined | null,
+): ViewConfig {
+  if (config == null) return {};
+  const ids = new Set(fields.map((f) => f.id));
+  const byId = new Map(fields.map((f) => [f.id, f]));
+  const pruneGroup = (g: FilterGroup): FilterGroup => ({
+    combinator: g.combinator === 'or' ? 'or' : 'and',
+    conditions: (g.conditions ?? [])
+      .map((n) =>
+        isGroup(n)
+          ? pruneGroup(n)
+          : ids.has(n.fieldId) &&
+              getFieldType(byId.get(n.fieldId)!.type).filterOperators.includes(
+                n.op,
+              )
+            ? n
+            : null,
+      )
+      .filter((n): n is FilterCondition | FilterGroup => {
+        if (n == null) return false;
+        if (isGroup(n)) return n.conditions.length > 0;
+        return true;
+      }),
+  });
+  return {
+    visibleFields: (config.visibleFields ?? []).filter((f) => ids.has(f)),
+    fieldOrder: (config.fieldOrder ?? []).filter((f) => ids.has(f)),
+    sorts: (config.sorts ?? []).filter(
+      (s) => ids.has(s.fieldId) && (s.direction === 'asc' || s.direction === 'desc'),
+    ),
+    filter: config.filter ? pruneGroup(config.filter) : undefined,
+    groupByFieldId:
+      config.groupByFieldId && ids.has(config.groupByFieldId)
+        ? config.groupByFieldId
+        : undefined,
+    displayFieldId:
+      config.displayFieldId && ids.has(config.displayFieldId)
+        ? config.displayFieldId
+        : undefined,
+  };
+}
+
 // Validate + normalize a view config against the table's fields. Throws
 // BadRequestException on any unknown field id, illegal operator for the field
 // type, or over-complex filter. Returns the config unchanged when valid.

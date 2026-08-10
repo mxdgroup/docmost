@@ -104,6 +104,11 @@ jobs:
         env:
           MXD_TEST_DB_URL: postgresql://t:t@localhost:5432/t
         run: pnpm exec tsx test/mxd-data/mxd-data-db-check.ts
+      - name: Query engine (filter/sort/isolation/injection) check
+        working-directory: apps/server
+        env:
+          MXD_TEST_DB_URL: postgresql://t:t@localhost:5432/t
+        run: pnpm exec tsx test/mxd-data/mxd-data-query-db-check.ts
 
   build:
     runs-on: ubuntu-latest

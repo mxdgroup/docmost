@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { sql } from 'kysely';
+import { RawBuilder, SqlBool, sql } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import { KyselyDB, KyselyTransaction } from '@docmost/db/types/kysely.types';
 import { dbOrTx } from '@docmost/db/utils';
@@ -7,6 +7,13 @@ import {
   InsertableMxdRecord,
   MxdRecord,
 } from '@docmost/db/types/entity.types';
+
+// A pre-compiled ORDER BY term (the core view layer builds these from a
+// validated config via the filter-compiler; the repo just applies them).
+export interface MxdOrderTerm {
+  expr: RawBuilder<unknown>;
+  direction: 'asc' | 'desc';
+}
 
 export interface MxdRecordPage {
   items: MxdRecord[];
@@ -78,6 +85,43 @@ export class MxdRecordRepo {
       .where('workspaceId', '=', workspaceId)
       .where('tableId', '=', tableId)
       .where('deletedAt', 'is', null)
+      .executeTakeFirst();
+    return {
+      items,
+      total: Number(countRow?.count ?? 0),
+      limit,
+      offset,
+    };
+  }
+
+  // Apply a validated, pre-compiled filter (where) + ordering over the
+  // workspace/table-scoped record set. `where` and `order` are built by the
+  // core view layer from a validated config — the repo never sees raw client
+  // strings. A stable secondary sort by id keeps pagination deterministic.
+  async queryView(
+    workspaceId: string,
+    tableId: string,
+    where: RawBuilder<SqlBool> | null,
+    order: MxdOrderTerm[],
+    limit: number,
+    offset: number,
+    trx?: KyselyTransaction,
+  ): Promise<MxdRecordPage> {
+    const db = dbOrTx(this.db, trx);
+    let base = db
+      .selectFrom('mxdRecords')
+      .where('workspaceId', '=', workspaceId)
+      .where('tableId', '=', tableId)
+      .where('deletedAt', 'is', null);
+    if (where) base = base.where(where);
+
+    let q = base.selectAll();
+    for (const term of order) q = q.orderBy(term.expr as any, term.direction);
+    q = q.orderBy('id', 'asc');
+
+    const items = await q.limit(limit).offset(offset).execute();
+    const countRow = await base
+      .select((eb) => eb.fn.countAll<string>().as('count'))
       .executeTakeFirst();
     return {
       items,
