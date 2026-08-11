@@ -30,7 +30,11 @@ export const MxdTable = Node.create<MxdTableOptions>({
   atom: true,
   isolating: true,
   defining: true,
-  draggable: true,
+  // Not draggable-as-a-whole: without a dedicated [data-drag-handle], a
+  // draggable atom makes the ENTIRE NodeView draggable="true", which makes
+  // Mantine's FocusTrap (used by every menu/tooltip/popover overlay) loop on
+  // open and hang the page. A dedicated drag handle can be reintroduced later.
+  draggable: false,
   selectable: true,
 
   addOptions() {
@@ -71,7 +75,18 @@ export const MxdTable = Node.create<MxdTableOptions>({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(this.options.view);
+    // This is an ATOM node whose entire DOM is React-managed and never maps to
+    // document content. Without these guards, a React re-render inside the
+    // NodeView (opening a Mantine menu/overlay, a focus change) triggers
+    // ProseMirror's mutation observer → PM rebuilds the NodeView → React
+    // re-renders → the observer fires again → the page hangs in an infinite
+    // loop. ignoreMutation tells PM none of the internal DOM changes affect the
+    // document; stopEvent keeps PM from hijacking clicks/keys meant for the
+    // interactive grid inside.
+    return ReactNodeViewRenderer(this.options.view, {
+      ignoreMutation: () => true,
+      stopEvent: () => true,
+    });
   },
 
   addCommands() {

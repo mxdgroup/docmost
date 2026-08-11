@@ -111,13 +111,28 @@ export default function MxdTableView(props: NodeViewProps) {
     value: unknown,
   ) => {
     try {
-      await mxdUpdateRecord({
+      const updated = await mxdUpdateRecord({
         tableId: tableId as string,
         recordId: record.id,
         version: record.version,
         cells: { [fieldId]: value },
       });
-      refresh();
+      // Patch the cache in place rather than invalidating+refetching. A refetch
+      // re-renders the grid and can drop an edit already in progress in another
+      // cell; patching also carries the new version forward so a repeat edit of
+      // the same cell doesn't 409.
+      queryClient.setQueriesData(
+        { queryKey: ["mxd-records", tableId] },
+        (old: any) => {
+          if (!old?.items) return old;
+          return {
+            ...old,
+            items: old.items.map((r: MxdRecord) =>
+              r.id === record.id ? updated : r,
+            ),
+          };
+        },
+      );
     } catch (err: any) {
       const status = err?.response?.status;
       notifications.show({
@@ -451,11 +466,16 @@ function GridView({
   } | null>(null);
 
   return (
-    <ScrollArea type="auto">
+    // A plain overflow container, NOT Mantine <ScrollArea>: ScrollArea's custom
+    // viewport breaks floating-ui's position observers, so any floating layer
+    // anchored to a grid element (select dropdown, tooltip, menu) enters an
+    // auto-update loop and hangs the page. A normal overflow div behaves.
+    <div style={{ overflowX: "auto" }}>
       <div
         style={{
           border: "1px solid var(--mantine-color-default-border)",
           borderRadius: 6,
+          minWidth: "min-content",
         }}
       >
         <Table striped withColumnBorders stickyHeader>
@@ -464,7 +484,7 @@ function GridView({
               {fields.map((f) => (
                 <Table.Th key={f.id}>{f.name}</Table.Th>
               ))}
-              {editable && <Table.Th w={40} />}
+              {editable && <Table.Th w={104} />}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -493,35 +513,42 @@ function GridView({
                 ))}
                 {editable && (
                   <Table.Td>
-                    <Menu shadow="md" position="bottom-end" withinPortal>
-                      <Menu.Target>
-                        <ActionIcon size="sm" variant="subtle" aria-label="Row actions">
-                          <IconDots size={16} />
-                        </ActionIcon>
-                      </Menu.Target>
-                      <Menu.Dropdown>
-                        <Menu.Item
-                          leftSection={<IconCopy size={14} />}
-                          onClick={() => onDuplicate(record)}
-                        >
-                          Duplicate
-                        </Menu.Item>
-                        <Menu.Item
-                          leftSection={<IconHistory size={14} />}
-                          onClick={() => onHistory(record)}
-                        >
-                          History
-                        </Menu.Item>
-                        <Menu.Divider />
-                        <Menu.Item
-                          color="red"
-                          leftSection={<IconTrash size={14} />}
-                          onClick={() => onDelete(record)}
-                        >
-                          Delete
-                        </Menu.Item>
-                      </Menu.Dropdown>
-                    </Menu>
+                    {/* Plain icons with a native title — NOT a Mantine Menu or
+                        Tooltip. Any floating-ui layer anchored to a grid element
+                        loops here (see the overflow-div note above), so row
+                        actions avoid the floating layer entirely. */}
+                    <Group gap={2} wrap="nowrap" justify="flex-end">
+                      <ActionIcon
+                        size="sm"
+                        variant="subtle"
+                        color="gray"
+                        aria-label="Duplicate row"
+                        title="Duplicate"
+                        onClick={() => onDuplicate(record)}
+                      >
+                        <IconCopy size={15} />
+                      </ActionIcon>
+                      <ActionIcon
+                        size="sm"
+                        variant="subtle"
+                        color="gray"
+                        aria-label="Row history"
+                        title="History"
+                        onClick={() => onHistory(record)}
+                      >
+                        <IconHistory size={15} />
+                      </ActionIcon>
+                      <ActionIcon
+                        size="sm"
+                        variant="subtle"
+                        color="red"
+                        aria-label="Delete row"
+                        title="Delete"
+                        onClick={() => onDelete(record)}
+                      >
+                        <IconTrash size={15} />
+                      </ActionIcon>
+                    </Group>
                   </Table.Td>
                 )}
               </Table.Tr>
@@ -538,7 +565,7 @@ function GridView({
           </Table.Tbody>
         </Table>
       </div>
-    </ScrollArea>
+    </div>
   );
 }
 
