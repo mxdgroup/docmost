@@ -2,12 +2,13 @@
 // input schema, service call, error mapping. All business logic lives in the
 // services. Every capability is a plain endpoint (agent-native parity).
 //
-// SECURITY SCOPE (current increment): gated behind MXD_DATA_PLATFORM_ENABLED
-// (default off) and scoped to the authenticated workspace. Finer-grained
-// space/table/view/record authorization (roadmap §17) is the NEXT required
-// increment and MUST land before this flag is enabled in any shared workspace —
-// today a workspace member could reach a table in a space they aren't a member
-// of. Tracked in the data-platform ledger.
+// SECURITY: gated behind MXD_DATA_PLATFORM_ENABLED (default off). Authorization
+// is enforced per operation by MxdAccessService — every read authorizes VIEW and
+// every write authorizes EDIT against the table's home page/space using
+// Docmost's own PageAccessService/SpaceAbilityFactory, so a workspace member
+// cannot reach a table/record in a space or restricted page they can't access.
+// (Public/anonymous share access to embedded tables is a separate, not-yet-built
+// path; the authenticated surface here refuses anonymous callers.)
 import {
   Body,
   Controller,
@@ -17,6 +18,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  IsBoolean,
   IsInt,
   IsObject,
   IsOptional,
@@ -70,7 +72,7 @@ class FieldConfigDto extends FieldIdDto {
 }
 class ChangeTypeDto extends FieldIdDto {
   @IsString() type: string;
-  @IsOptional() clearIncompatible?: boolean;
+  @IsOptional() @IsBoolean() clearIncompatible?: boolean;
   @IsOptional() @IsObject() config?: Record<string, unknown>;
 }
 class CreateRecordDto {

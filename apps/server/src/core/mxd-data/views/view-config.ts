@@ -51,6 +51,7 @@ const MAX_FILTER_DEPTH = 4;
 const MAX_FILTER_CONDITIONS = 50;
 const MAX_SORTS = 8;
 const MAX_VALUE_LEN = 2000;
+const MAX_ARRAY_ITEMS = 200;
 
 function isGroup(node: FilterCondition | FilterGroup): node is FilterGroup {
   return (node as FilterGroup).combinator !== undefined;
@@ -90,9 +91,12 @@ export function sanitizeViewConfig(
   return {
     visibleFields: (config.visibleFields ?? []).filter((f) => ids.has(f)),
     fieldOrder: (config.fieldOrder ?? []).filter((f) => ids.has(f)),
-    sorts: (config.sorts ?? []).filter(
-      (s) => ids.has(s.fieldId) && (s.direction === 'asc' || s.direction === 'desc'),
-    ),
+    sorts: (config.sorts ?? []).filter((s) => {
+      if (!ids.has(s.fieldId)) return false;
+      if (s.direction !== 'asc' && s.direction !== 'desc') return false;
+      const t = getFieldType(byId.get(s.fieldId)!.type);
+      return !t.isComputed && !t.isRelation; // drop unsortable computed/relation
+    }),
     filter: config.filter ? pruneGroup(config.filter) : undefined,
     groupByFieldId:
       config.groupByFieldId && ids.has(config.groupByFieldId)
@@ -138,9 +142,17 @@ export function validateViewConfig(
     throw new BadRequestException(`Too many sorts (max ${MAX_SORTS})`);
   }
   for (const s of sorts) {
-    requireField(s.fieldId, 'sort');
+    const field = requireField(s.fieldId, 'sort');
     if (s.direction !== 'asc' && s.direction !== 'desc') {
       throw new BadRequestException(`Invalid sort direction: ${s.direction}`);
+    }
+    const t = getFieldType(field.type);
+    if (t.isComputed || t.isRelation) {
+      // Computed/relation values aren't in the jsonb, so sorting them via the
+      // compiler would order by NULL (all-equal). Reject rather than mislead.
+      throw new BadRequestException(
+        `Field "${field.name}" cannot be sorted (computed/relation)`,
+      );
     }
   }
 
@@ -174,11 +186,38 @@ export function validateViewConfig(
           `Operator "${node.op}" is not valid for field "${field.name}"`,
         );
       }
-      if (
-        typeof node.value === 'string' &&
-        node.value.length > MAX_VALUE_LEN
-      ) {
+      if (typeof node.value === 'string' && node.value.length > MAX_VALUE_LEN) {
         throw new BadRequestException('Filter value is too long');
+      }
+      // Array-valued operators: bound shape/size so a crafted filter can't
+      // amplify query cost or degrade to an unbounded range (NaN).
+      if (node.op === 'between') {
+        if (!Array.isArray(node.value) || node.value.length !== 2) {
+          throw new BadRequestException(
+            'between requires a 2-element [from, to] value',
+          );
+        }
+      }
+      if (
+        node.op === 'hasAny' ||
+        node.op === 'hasAll' ||
+        node.op === 'hasNone'
+      ) {
+        if (!Array.isArray(node.value)) {
+          throw new BadRequestException(`${node.op} requires an array value`);
+        }
+        if (node.value.length > MAX_ARRAY_ITEMS) {
+          throw new BadRequestException(
+            `Too many values (max ${MAX_ARRAY_ITEMS})`,
+          );
+        }
+      }
+      if (Array.isArray(node.value)) {
+        for (const item of node.value) {
+          if (typeof item === 'string' && item.length > MAX_VALUE_LEN) {
+            throw new BadRequestException('Filter value is too long');
+          }
+        }
       }
     }
   };

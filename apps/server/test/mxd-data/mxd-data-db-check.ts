@@ -32,7 +32,7 @@ const findRecord = (w: string, t: string, id: string) =>
     .executeTakeFirst();
 const updateWithVersion = (w: string, t: string, id: string, ver: number, data: any) =>
   db.updateTable('mxdRecords')
-    .set({ data: JSON.stringify(data) as any, version: ver + 1 })
+    .set({ data: data as any, version: ver + 1 }) /* object, not JSON.stringify: matches the real repo; stringify double-encodes jsonb in the app (bug ffcc6d49) */
     .where('id', '=', id).where('tableId', '=', t).where('workspaceId', '=', w)
     .where('version', '=', ver).where('deletedAt', 'is', null)
     .returningAll().executeTakeFirst();
@@ -71,7 +71,7 @@ async function main() {
   check(dup, 'duplicate field name rejected by unique (table_id,name)');
 
   const rec: any = await db.insertInto('mxdRecords')
-    .values({ tableId: table.id, workspaceId: w1, data: JSON.stringify({ [field.id]: 'hi' }) as any, position: 1, version: 1 })
+    .values({ tableId: table.id, workspaceId: w1, data: { [field.id]: 'hi' } as any, position: 1, version: 1 })
     .returningAll().executeTakeFirstOrThrow();
   check(rec.version === 1, 'record inserted at version 1');
 

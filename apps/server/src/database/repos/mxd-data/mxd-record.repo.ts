@@ -192,14 +192,18 @@ export class MxdRecordRepo {
     workspaceId: string,
     tableId: string,
     trx?: KyselyTransaction,
+    forUpdate = false,
   ): Promise<Pick<MxdRecord, 'id' | 'data' | 'version'>[]> {
-    return dbOrTx(this.db, trx)
+    let q = dbOrTx(this.db, trx)
       .selectFrom('mxdRecords')
       .select(['id', 'data', 'version'])
       .where('workspaceId', '=', workspaceId)
       .where('tableId', '=', tableId)
-      .where('deletedAt', 'is', null)
-      .execute();
+      .where('deletedAt', 'is', null);
+    // Lock the rows for the transaction so a concurrent updateWithVersion can't
+    // interleave a change that a later replaceData would silently clobber.
+    if (forUpdate) q = q.forUpdate();
+    return q.execute();
   }
 
   // Remove a field's key from every record's jsonb (field delete policy §12:

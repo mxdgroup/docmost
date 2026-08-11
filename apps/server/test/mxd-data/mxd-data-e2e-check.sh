@@ -54,6 +54,15 @@ check "$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$R1ID'"}' | jd "
 DBL=$(post mxd/fields/add '{"tableId":"'$TID'","name":"Doubled","type":"formula","config":{"expression":"{'$AGE'} * 2"}}' | jd "d['id']")
 check "$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$R1ID'"}' | jd "d['data']['$DBL']")" "62" "formula {age}*2 -> 62"
 check "$(code mxd/fields/add '{"tableId":"'$TID'","name":"BadF","type":"formula","config":{"expression":"1 +"}}')" "400" "invalid formula -> 400"
+# review regressions: computed fields are not filterable/sortable (values aren't in jsonb -> would silently match nothing)
+check "$(code mxd/records/query '{"tableId":"'$TID'","config":{"filter":{"combinator":"and","conditions":[{"fieldId":"'$DBL'","op":"gt","value":1}]}}}')" "400" "filter on a formula field -> 400 (computed not filterable)"
+check "$(code mxd/records/query '{"tableId":"'$TID'","config":{"sorts":[{"fieldId":"'$DBL'","direction":"asc"}]}}')" "400" "sort on a formula field -> 400 (computed not sortable)"
+# review regression: between on a DATE field must not 500 (compiler casts by type)
+DUE=$(post mxd/fields/add '{"tableId":"'$TID'","name":"Due","type":"date"}' | jd "d['id']")
+DR1V=$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$R1ID'"}' | jd "d['version']")
+post mxd/records/update '{"tableId":"'$TID'","recordId":"'$R1ID'","version":'$DR1V',"cells":{"'$DUE'":"2026-06-15"}}' >/dev/null
+check "$(code mxd/records/query '{"tableId":"'$TID'","config":{"filter":{"combinator":"and","conditions":[{"fieldId":"'$DUE'","op":"between","value":["2026-01-01","2026-12-31"]}]}}}')" "200" "between on a date field -> 200 (no numeric-cast 500)"
+check "$(code mxd/records/query '{"tableId":"'$TID'","config":{"filter":{"combinator":"and","conditions":[{"fieldId":"'$DUE'","op":"between","value":["2026-06-15"]}]}}}')" "400" "between with a 1-element array -> 400"
 check "$(post mxd/views/create '{"tableId":"'$TID'","type":"board","name":"Board"}' | jd "d['type']")" "board" "board view created"
 check "$(code mxd/records/query '{"tableId":"'$TID'","config":{"filter":{"combinator":"and","conditions":[{"fieldId":"'$AGE'","op":"contains","value":"x"}]}}}')" "400" "illegal operator (inline) -> 400"
 INJ=$(post mxd/records/query '{"tableId":"'$TID'","config":{"filter":{"combinator":"and","conditions":[{"fieldId":"'$PRIM'","op":"equals","value":"Alice'"'"' OR 1=1 --"}]}}}')

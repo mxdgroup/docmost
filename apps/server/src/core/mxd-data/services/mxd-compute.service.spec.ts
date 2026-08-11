@@ -38,8 +38,17 @@ function make() {
       { id: 'c2', data: { name: 'Globex', rev: 20 } },
     ]),
   };
-  const service = new MxdComputeService(recordRepo as any, linkRepo as any);
-  return { service, linkRepo, recordRepo };
+  const tableRepo = {
+    findById: jest.fn().mockResolvedValue({ id: 'tRel', pageId: 'p', spaceId: 's' }),
+  };
+  const access = { canRead: jest.fn().mockResolvedValue(true) };
+  const service = new MxdComputeService(
+    recordRepo as any,
+    linkRepo as any,
+    tableRepo as any,
+    access as any,
+  );
+  return { service, linkRepo, recordRepo, tableRepo, access };
 }
 
 describe('MxdComputeService', () => {

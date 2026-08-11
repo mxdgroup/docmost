@@ -229,10 +229,14 @@ const user: FieldType = {
 
 // Relation: stored as edges in mxd_record_links, never a jsonb cell. A direct
 // cell write is refused; linking goes through the relation API.
+// Relation: stored as edges in mxd_record_links, never a jsonb cell. It has NO
+// filter operators here: a relation's value isn't in `data`, so any compiled
+// jsonb filter would be a always-NULL predicate. Relation filtering belongs to a
+// dedicated edge-aware path (future), not the cell filter compiler.
 const relation: FieldType = {
   key: 'relation',
   isRelation: true,
-  filterOperators: ['isEmpty', 'isNotEmpty'],
+  filterOperators: [],
   normalize: () => {
     throw new FieldValidationError(
       'relation values are set via the relation endpoints, not a cell write',
@@ -240,13 +244,16 @@ const relation: FieldType = {
   },
 };
 
-// Computed types: derived server-side, read-only to clients. A direct write is
-// refused; the compute service populates the cell.
-function computed(key: string, ops: FilterOperator[]): FieldType {
+// Computed types: derived server-side on READ, read-only to clients, and NOT
+// persisted into the `data` jsonb. They therefore expose NO filter operators —
+// filtering/sorting them via the jsonb compiler would silently match nothing
+// (a data-integrity trap). Filtering/sorting computed fields needs a post-query
+// path (future); until then it is rejected at view validation.
+function computed(key: string): FieldType {
   return {
     key,
     isComputed: true,
-    filterOperators: ops,
+    filterOperators: [],
     normalize: () => {
       throw new FieldValidationError(`${key} is computed and cannot be set`);
     },
@@ -268,14 +275,14 @@ const REGISTRY: Record<string, FieldType> = Object.freeze({
   email,
   user,
   relation,
-  lookup: computed('lookup', [...NUMBER_OPS, ...TEXT_OPS]),
-  rollup: computed('rollup', NUMBER_OPS),
-  formula: computed('formula', [...NUMBER_OPS, ...TEXT_OPS]),
-  created_time: computed('created_time', DATE_OPS),
-  updated_time: computed('updated_time', DATE_OPS),
-  created_by: computed('created_by', SELECT_OPS),
-  updated_by: computed('updated_by', SELECT_OPS),
-  autonumber: computed('autonumber', NUMBER_OPS),
+  lookup: computed('lookup'),
+  rollup: computed('rollup'),
+  formula: computed('formula'),
+  created_time: computed('created_time'),
+  updated_time: computed('updated_time'),
+  created_by: computed('created_by'),
+  updated_by: computed('updated_by'),
+  autonumber: computed('autonumber'),
 });
 
 export function getFieldType(type: string): FieldType {

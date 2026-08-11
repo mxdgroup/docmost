@@ -171,7 +171,11 @@ export class MxdFieldService {
     fieldId: string,
     config: FieldConfig,
   ): Promise<MxdField> {
-    await this.requireField(ctx, tableId, fieldId, true);
+    const field = await this.requireField(ctx, tableId, fieldId, true);
+    // Re-validate per-type config on UPDATE, not just at creation — otherwise a
+    // relation field's relatedTableId could be silently repointed to any table
+    // (incl. one the owner can't read), and a formula could be set to garbage.
+    await this.validateTypeConfig(ctx, field.type, config);
     const updated = await this.fieldRepo.update(ctx.workspaceId, tableId, fieldId, {
       config: (config ?? {}) as any,
     });
@@ -197,19 +201,31 @@ export class MxdFieldService {
     }
     const target = getFieldType(newType);
     const config = (opts.config ?? field.config ?? {}) as FieldConfig;
-    const records = await this.recordRepo.allForTable(ctx.workspaceId, tableId);
+    // Validate the target type's config (relation relatedTableId, formula expr).
+    await this.validateTypeConfig(ctx, newType, config);
 
-    // Cell-less target (relation/computed): values are dropped by definition.
-    if (target.isRelation || target.isComputed) {
-      const hasValues = records.some(
-        (r) => (r.data as any)?.[fieldId] != null,
+    // Read AND write in ONE transaction with the rows locked (FOR UPDATE), so a
+    // concurrent updateRecord can't interleave a change that a later replaceData
+    // would silently clobber (§P1 lost-update).
+    return this.db.transaction().execute(async (trx) => {
+      const records = await this.recordRepo.allForTable(
+        ctx.workspaceId,
+        tableId,
+        trx,
+        true,
       );
-      if (hasValues && !opts.clearIncompatible) {
-        throw new BadRequestException(
-          `Converting to ${newType} discards all existing values in this field — retry with clearIncompatible to confirm`,
+      const byId = new Map(records.map((r) => [r.id, r]));
+
+      // Cell-less target (relation/computed): values are dropped by definition.
+      if (target.isRelation || target.isComputed) {
+        const hasValues = records.some(
+          (r) => (r.data as any)?.[fieldId] != null,
         );
-      }
-      return this.db.transaction().execute(async (trx) => {
+        if (hasValues && !opts.clearIncompatible) {
+          throw new BadRequestException(
+            `Converting to ${newType} discards all existing values in this field — retry with clearIncompatible to confirm`,
+          );
+        }
         await this.recordRepo.stripField(ctx.workspaceId, tableId, fieldId, trx);
         const updated = await this.fieldRepo.update(
           ctx.workspaceId,
@@ -220,31 +236,29 @@ export class MxdFieldService {
         );
         if (!updated) throw new NotFoundException('Field not found');
         return updated;
-      });
-    }
-
-    // Scalar target: attempt to re-normalize each cell; collect incompatibles.
-    const converted: { id: string; value: unknown }[] = [];
-    const incompatible: string[] = [];
-    for (const r of records) {
-      const raw = (r.data as any)?.[fieldId];
-      if (raw == null) continue;
-      try {
-        converted.push({ id: r.id, value: target.normalize(raw, config) });
-      } catch (err) {
-        if (err instanceof FieldValidationError) incompatible.push(r.id);
-        else throw err;
       }
-    }
-    if (incompatible.length > 0 && !opts.clearIncompatible) {
-      throw new BadRequestException(
-        `${incompatible.length} value(s) cannot convert to ${newType} — retry with clearIncompatible to clear them, or fix the values first`,
-      );
-    }
 
-    return this.db.transaction().execute(async (trx) => {
+      // Scalar target: re-normalize each cell; collect incompatibles.
+      const converted: { id: string; value: unknown }[] = [];
+      const incompatible: string[] = [];
+      for (const r of records) {
+        const raw = (r.data as any)?.[fieldId];
+        if (raw == null) continue;
+        try {
+          converted.push({ id: r.id, value: target.normalize(raw, config) });
+        } catch (err) {
+          if (err instanceof FieldValidationError) incompatible.push(r.id);
+          else throw err;
+        }
+      }
+      if (incompatible.length > 0 && !opts.clearIncompatible) {
+        throw new BadRequestException(
+          `${incompatible.length} value(s) cannot convert to ${newType} — retry with clearIncompatible to clear them, or fix the values first`,
+        );
+      }
+
       for (const c of converted) {
-        const rec = records.find((r) => r.id === c.id)!;
+        const rec = byId.get(c.id)!;
         await this.recordRepo.replaceData(
           ctx.workspaceId,
           tableId,
@@ -255,7 +269,7 @@ export class MxdFieldService {
       }
       if (opts.clearIncompatible) {
         for (const id of incompatible) {
-          const rec = records.find((r) => r.id === id)!;
+          const rec = byId.get(id)!;
           const next = { ...((rec.data as object) ?? {}) };
           delete (next as any)[fieldId];
           await this.recordRepo.replaceData(

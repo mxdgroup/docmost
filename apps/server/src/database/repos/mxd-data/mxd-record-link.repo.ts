@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { sql } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import { KyselyDB, KyselyTransaction } from '@docmost/db/types/kysely.types';
 import { dbOrTx } from '@docmost/db/utils';
@@ -14,6 +15,19 @@ import {
 @Injectable()
 export class MxdRecordLinkRepo {
   constructor(@InjectKysely() private readonly db: KyselyDB) {}
+
+  // Transaction-scoped advisory lock keyed by (field, fromRecord) — serializes
+  // concurrent link() calls for the same source so the single-relation replace
+  // and the fan-out cap are race-free.
+  async lockRelation(
+    fieldId: string,
+    fromRecordId: string,
+    trx: KyselyTransaction,
+  ): Promise<void> {
+    await sql`select pg_advisory_xact_lock(hashtextextended(${
+      fieldId + ':' + fromRecordId
+    }, 0))`.execute(trx);
+  }
 
   // Idempotent: the unique (field_id, from, to) constraint means a duplicate
   // link is a no-op rather than an error.

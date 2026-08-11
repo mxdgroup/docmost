@@ -1,14 +1,22 @@
 import { Injectable } from '@nestjs/common';
 import { MxdRecordRepo } from '@docmost/db/repos/mxd-data/mxd-record.repo';
 import { MxdRecordLinkRepo } from '@docmost/db/repos/mxd-data/mxd-record-link.repo';
+import { MxdTableRepo } from '@docmost/db/repos/mxd-data/mxd-table.repo';
 import { MxdField, MxdRecord } from '@docmost/db/types/entity.types';
 import { MxdContext } from '../mxd-context';
+import { MxdAccessService } from '../mxd-access.service';
 import { FieldConfig } from '../field-types/field-type';
 import { getFieldType } from '../field-types/field-types.registry';
 import {
   CompiledFormula,
   compileFormula,
 } from '../formula/formula-engine';
+
+// Cap the number of relation targets materialized per computed field, and the
+// size of a concat rollup, so an unbounded relation fan-out can't turn a read
+// into a memory bomb (§P0).
+const MAX_COMPUTE_TARGETS = 1_000;
+const MAX_CONCAT_LEN = 50_000;
 
 // MXD data platform — computed cells: lookups + rollups (roadmap §8/§33).
 // Derived on READ and merged transiently into record.data (never persisted), so
@@ -24,6 +32,8 @@ export class MxdComputeService {
   constructor(
     private readonly recordRepo: MxdRecordRepo,
     private readonly linkRepo: MxdRecordLinkRepo,
+    private readonly tableRepo: MxdTableRepo,
+    private readonly access: MxdAccessService,
   ) {}
 
   async enrich(
@@ -41,6 +51,9 @@ export class MxdComputeService {
 
     const fieldsById = new Map(fields.map((f) => [f.id, f]));
     const recordIds = records.map((r) => r.id);
+    // Cache the reader's access to each related table within this call — many
+    // computed fields may share a target table.
+    const readable = new Map<string, boolean>();
 
     for (const cf of computed) {
       const cfg = (cf.config ?? {}) as FieldConfig;
@@ -58,12 +71,38 @@ export class MxdComputeService {
       }
 
       const relatedTableId = (via.config as FieldConfig).relatedTableId!;
+
+      // AUTHORIZE the related table for the CURRENT reader — a lookup/rollup
+      // must not surface data from a table the reader can't access (confused
+      // deputy / cross-space leak). If unreadable, yield empty (as if no links).
+      if (!readable.has(relatedTableId)) {
+        const relatedTable = await this.tableRepo.findById(
+          ctx.workspaceId,
+          relatedTableId,
+        );
+        readable.set(
+          relatedTableId,
+          relatedTable
+            ? await this.access.canRead(ctx, relatedTable)
+            : false,
+        );
+      }
+      if (!readable.get(relatedTableId)) {
+        for (const r of records) (r.data as any)[cf.id] = emptyVal;
+        continue;
+      }
+
       const edges = await this.linkRepo.listFromMany(
         ctx.workspaceId,
         via.id,
         recordIds,
       );
-      const targetIds = [...new Set(edges.map((e) => e.toRecordId))];
+      // Cap the distinct targets we materialize (fan-out bomb guard, §P0).
+      const targetIds = [...new Set(edges.map((e) => e.toRecordId))].slice(
+        0,
+        MAX_COMPUTE_TARGETS,
+      );
+      const targetSet = new Set(targetIds);
       const targets = await this.recordRepo.findByIds(
         ctx.workspaceId,
         relatedTableId,
@@ -79,7 +118,9 @@ export class MxdComputeService {
       }
 
       for (const r of records) {
-        const tids = byFrom.get(r.id) ?? [];
+        const tids = (byFrom.get(r.id) ?? [])
+          .filter((id) => targetSet.has(id))
+          .slice(0, MAX_COMPUTE_TARGETS);
         const values = tids
           .map((id) => (targetById.get(id)?.data as any)?.[cfg.targetFieldId!])
           .filter((v) => v != null);
@@ -187,8 +228,12 @@ export class MxdComputeService {
         return nums.length ? Math.min(...nums) : null;
       case 'max':
         return nums.length ? Math.max(...nums) : null;
-      case 'concat':
-        return values.map((v) => String(v)).join(', ');
+      case 'concat': {
+        const joined = values.map((v) => String(v)).join(', ');
+        return joined.length > MAX_CONCAT_LEN
+          ? joined.slice(0, MAX_CONCAT_LEN)
+          : joined;
+      }
       default:
         // no aggregate specified → default to count of related records
         return relatedCount;

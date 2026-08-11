@@ -34,13 +34,22 @@ function isGroup(n: FilterCondition | FilterGroup): n is FilterGroup {
   return (n as FilterGroup).combinator !== undefined;
 }
 
+const DATE_TYPES = new Set([
+  'date',
+  'datetime',
+  'created_time',
+  'updated_time',
+]);
+
 function compileCondition(
   fieldsById: Map<string, MxdField>,
   c: FilterCondition,
 ): RawBuilder<SqlBool> {
-  if (!fieldsById.has(c.fieldId)) {
+  const field = fieldsById.get(c.fieldId);
+  if (!field) {
     throw new BadRequestException('Unknown filter field');
   }
+  const isDate = DATE_TYPES.has(field.type);
   const t = cellText(c.fieldId);
   const j = cellJson(c.fieldId);
   const v = c.value;
@@ -72,7 +81,10 @@ function compileCondition(
       return sql<SqlBool>`(${t})::numeric <= ${Number(v)}`;
     case 'between': {
       const [a, b] = asArray(v);
-      return sql<SqlBool>`(${t})::numeric between ${Number(a)} and ${Number(b)}`;
+      // Cast by field type — a date field's cells are ISO strings, not numeric.
+      return isDate
+        ? sql<SqlBool>`(${t})::timestamptz between ${String(a)}::timestamptz and ${String(b)}::timestamptz`
+        : sql<SqlBool>`(${t})::numeric between ${Number(a)} and ${Number(b)}`;
     }
 
     case 'before':

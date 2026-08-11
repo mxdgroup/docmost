@@ -228,6 +228,28 @@ export async function up(db: Kysely<any>): Promise<void> {
     .on('mxd_records')
     .column('workspace_id')
     .execute();
+  // workspace_id indexes on the other child tables too — every repo query scopes
+  // by workspace, and these also back the ON DELETE CASCADE from workspaces.
+  await db.schema
+    .createIndex('idx_mxd_tables_workspace')
+    .on('mxd_tables')
+    .column('workspace_id')
+    .execute();
+  await db.schema
+    .createIndex('idx_mxd_fields_workspace')
+    .on('mxd_fields')
+    .column('workspace_id')
+    .execute();
+  await db.schema
+    .createIndex('idx_mxd_views_workspace')
+    .on('mxd_views')
+    .column('workspace_id')
+    .execute();
+  await db.schema
+    .createIndex('idx_mxd_record_links_workspace')
+    .on('mxd_record_links')
+    .column('workspace_id')
+    .execute();
   await db.schema
     .createIndex('idx_mxd_views_table')
     .on('mxd_views')

@@ -97,11 +97,11 @@ export class MxdTableService {
   // restricted page's table is filtered out rather than leaked (roadmap §5).
   async listTables(ctx: MxdContext, spaceId: string): Promise<MxdTable[]> {
     const tables = await this.tableRepo.listBySpace(ctx.workspaceId, spaceId);
-    const visible: MxdTable[] = [];
-    for (const table of tables) {
-      if (await this.access.canRead(ctx, table)) visible.push(table);
-    }
-    return visible;
+    // Resolve the per-table read checks in parallel rather than serially.
+    const readable = await Promise.all(
+      tables.map((table) => this.access.canRead(ctx, table)),
+    );
+    return tables.filter((_, i) => readable[i]);
   }
 
   async renameTable(

@@ -3,6 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectKysely } from 'nestjs-kysely';
+import { KyselyDB } from '@docmost/db/types/kysely.types';
 import { MxdTableRepo } from '@docmost/db/repos/mxd-data/mxd-table.repo';
 import { MxdFieldRepo } from '@docmost/db/repos/mxd-data/mxd-field.repo';
 import { MxdRecordRepo } from '@docmost/db/repos/mxd-data/mxd-record.repo';
@@ -21,9 +23,14 @@ import { getFieldType } from '../field-types/field-types.registry';
 //   - both endpoints are resolved from the DB within the caller's workspace, so
 //     an edge can never span tenants or point at a non-existent/foreign record
 //     (a client-supplied record id is never trusted on its own).
+// Hard cap on outgoing edges per (relation field, source record). Bounds the
+// fan-out that lookup/rollup compute must materialize on every read (§P0).
+const MAX_RELATION_EDGES = 10_000;
+
 @Injectable()
 export class MxdRelationService {
   constructor(
+    @InjectKysely() private readonly db: KyselyDB,
     private readonly tableRepo: MxdTableRepo,
     private readonly fieldRepo: MxdFieldRepo,
     private readonly recordRepo: MxdRecordRepo,
@@ -100,30 +107,50 @@ export class MxdRelationService {
     );
     if (!to) throw new BadRequestException('Target record not found');
 
-    // one-to-* (single): replace any existing outgoing edge for this field.
-    if (config.single) {
+    // Serialize concurrent links for this (field, fromRecord) with a
+    // transaction-scoped advisory lock, so the single-relation replace and the
+    // fan-out cap are race-free (two concurrent links can't both see 0 edges
+    // and both insert).
+    return this.db.transaction().execute(async (trx) => {
+      await this.linkRepo.lockRelation(input.fieldId, input.fromRecordId, trx);
+
       const existing = await this.linkRepo.listFrom(
         ctx.workspaceId,
         input.fieldId,
         input.fromRecordId,
+        trx,
       );
-      for (const e of existing) {
-        await this.linkRepo.deleteEdge(
-          ctx.workspaceId,
-          input.fieldId,
-          e.fromRecordId,
-          e.toRecordId,
+      if (config.single) {
+        // one-to-* : replace any existing outgoing edge for this field.
+        for (const e of existing) {
+          await this.linkRepo.deleteEdge(
+            ctx.workspaceId,
+            input.fieldId,
+            e.fromRecordId,
+            e.toRecordId,
+            trx,
+          );
+        }
+      } else if (
+        existing.length >= MAX_RELATION_EDGES &&
+        !existing.some((e) => e.toRecordId === input.toRecordId)
+      ) {
+        throw new BadRequestException(
+          `A record can have at most ${MAX_RELATION_EDGES} links on one relation`,
         );
       }
-    }
 
-    await this.linkRepo.insert({
-      workspaceId: ctx.workspaceId,
-      fieldId: input.fieldId,
-      fromRecordId: input.fromRecordId,
-      toRecordId: input.toRecordId,
+      await this.linkRepo.insert(
+        {
+          workspaceId: ctx.workspaceId,
+          fieldId: input.fieldId,
+          fromRecordId: input.fromRecordId,
+          toRecordId: input.toRecordId,
+        },
+        trx,
+      );
+      return { success: true };
     });
-    return { success: true };
   }
 
   async unlink(
@@ -162,13 +189,18 @@ export class MxdRelationService {
       input.fieldId,
       input.recordId,
     );
+    // Batch-fetch targets (one query) instead of N+1 findById per edge, and
+    // preserve edge order.
+    const toIds = edges.map((e) => e.toRecordId);
+    const targets = await this.recordRepo.findByIds(
+      ctx.workspaceId,
+      relatedTable.id,
+      toIds,
+    );
+    const byId = new Map(targets.map((t) => [t.id, t]));
     const out: MxdRecord[] = [];
-    for (const e of edges) {
-      const rec = await this.recordRepo.findById(
-        ctx.workspaceId,
-        relatedTable.id,
-        e.toRecordId,
-      );
+    for (const id of toIds) {
+      const rec = byId.get(id);
       if (rec) out.push(rec);
     }
     return out;

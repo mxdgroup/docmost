@@ -31,12 +31,16 @@ function make(opts: { single?: boolean; relationType?: string } = {}) {
     insert: jest.fn().mockResolvedValue({ id: 'e1' }),
     listFrom: jest.fn().mockResolvedValue([]),
     deleteEdge: jest.fn().mockResolvedValue(undefined),
+    lockRelation: jest.fn().mockResolvedValue(undefined),
   };
   const access = {
     authorizeRead: jest.fn().mockResolvedValue(undefined),
     authorizeWrite: jest.fn().mockResolvedValue(undefined),
   };
+  // db.transaction().execute(cb) just runs the callback with a dummy trx.
+  const db = { transaction: () => ({ execute: (cb: any) => cb({}) }) };
   const service = new MxdRelationService(
+    db as any,
     tableRepo as any,
     fieldRepo as any,
     recordRepo as any,
@@ -64,6 +68,7 @@ describe('MxdRelationService', () => {
         fromRecordId: 'from',
         toRecordId: 'to',
       }),
+      expect.anything(), // trx
     );
     expect(access.authorizeWrite).toHaveBeenCalled(); // source
     expect(access.authorizeRead).toHaveBeenCalled(); // target table
@@ -89,7 +94,13 @@ describe('MxdRelationService', () => {
       { fromRecordId: 'from', toRecordId: 'old' },
     ]);
     await service.link(ctx, edge);
-    expect(linkRepo.deleteEdge).toHaveBeenCalledWith('ws1', 'fRel', 'from', 'old');
+    expect(linkRepo.deleteEdge).toHaveBeenCalledWith(
+      'ws1',
+      'fRel',
+      'from',
+      'old',
+      expect.anything(),
+    );
     expect(linkRepo.insert).toHaveBeenCalled();
   });
 

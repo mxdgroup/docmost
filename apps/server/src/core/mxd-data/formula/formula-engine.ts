@@ -15,6 +15,17 @@ export class FormulaError extends Error {
 const MAX_DEPTH = 32;
 const MAX_STEPS = 10_000;
 const MAX_EXPR_LEN = 4_000;
+// Bounds the SIZE of a string result (not just the number of eval steps), so a
+// short expression like CONCAT({bigTextField}, {bigTextField}, ...) can't
+// materialize a huge string per record.
+const MAX_STRING_LEN = 50_000;
+
+function boundStr(s: string): string {
+  if (s.length > MAX_STRING_LEN) {
+    throw new FormulaError('formula string result too large');
+  }
+  return s;
+}
 
 type Tok =
   | { t: 'num'; v: number }
@@ -142,16 +153,24 @@ class Parser {
   }
 
   private unary(): Node {
-    const t = this.peek();
-    if (t && t.t === 'op' && (t.v === '-' || t.v === '+')) {
-      this.next();
-      return { k: 'unary', op: t.v, a: this.unary() };
+    // Depth-guard unary chains too (a long `- - - ...` or `NOT NOT ...` run
+    // recurses here without going through expr()); otherwise MAX_DEPTH is
+    // bypassed and a crafted expression can blow the stack.
+    this.guardDepth();
+    try {
+      const t = this.peek();
+      if (t && t.t === 'op' && (t.v === '-' || t.v === '+')) {
+        this.next();
+        return { k: 'unary', op: t.v, a: this.unary() };
+      }
+      if (t && t.t === 'ident' && (t.v === 'NOT' || t.v === 'not')) {
+        this.next();
+        return { k: 'unary', op: '!', a: this.unary() };
+      }
+      return this.primary();
+    } finally {
+      this.depth--;
     }
-    if (t && t.t === 'ident' && (t.v === 'NOT' || t.v === 'not')) {
-      this.next();
-      return { k: 'unary', op: '!', a: this.unary() };
-    }
-    return this.primary();
   }
 
   private primary(): Node {
@@ -277,7 +296,7 @@ function binop(op: string, la: () => unknown, lb: () => unknown): unknown {
   switch (op) {
     case '+':
       return typeof a === 'string' || typeof b === 'string'
-        ? toStr(a) + toStr(b)
+        ? boundStr(toStr(a) + toStr(b))
         : toNum(a) + toNum(b);
     case '-': return toNum(a) - toNum(b);
     case '*': return toNum(a) * toNum(b);
@@ -326,7 +345,7 @@ function callFn(name: string, args: unknown[]): unknown {
     case 'AND': return args.every(truthy);
     case 'OR': return args.some(truthy);
     case 'NOT': return !truthy(args[0]);
-    case 'CONCAT': return args.map(toStr).join('');
+    case 'CONCAT': return boundStr(args.map(toStr).join(''));
     case 'UPPER': return toStr(args[0]).toUpperCase();
     case 'LOWER': return toStr(args[0]).toLowerCase();
     case 'LEN': return toStr(args[0]).length;
