@@ -8,6 +8,7 @@ import {
   MxdAutomationRuleRepo,
   MxdAutomationRunRepo,
 } from './mxd-automation.repo';
+import { MxdRecordHistoryRepo } from './mxd-record-history.repo';
 
 // MXD data-platform repositories. Global so the feature services (E4) can inject
 // them without re-importing per module, mirroring how the app's DatabaseModule
@@ -22,6 +23,7 @@ import {
     MxdRecordLinkRepo,
     MxdAutomationRuleRepo,
     MxdAutomationRunRepo,
+    MxdRecordHistoryRepo,
   ],
   exports: [
     MxdTableRepo,
@@ -31,6 +33,7 @@ import {
     MxdRecordLinkRepo,
     MxdAutomationRuleRepo,
     MxdAutomationRunRepo,
+    MxdRecordHistoryRepo,
   ],
 })
 export class MxdDataRepoModule {}

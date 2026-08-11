@@ -727,6 +727,19 @@ export interface MxdAutomationRuns {
   workspaceId: string;
 }
 
+export interface MxdRecordHistory {
+  action: string;
+  actorGuestName: string | null;
+  actorId: string | null;
+  changedFieldIds: Generated<Json>;
+  createdAt: Generated<Timestamp>;
+  data: Generated<Json>;
+  id: Generated<string>;
+  recordId: string;
+  tableId: string;
+  workspaceId: string;
+}
+
 export interface DB {
   aiChats: AiChats;
   aiChatMessages: AiChatMessages;
@@ -753,6 +766,7 @@ export interface DB {
   mxdViews: MxdViews;
   mxdAutomationRules: MxdAutomationRules;
   mxdAutomationRuns: MxdAutomationRuns;
+  mxdRecordHistory: MxdRecordHistory;
   notifications: Notifications;
   pageAccess: PageAccess;
   pageTransclusionReferences: PageTransclusionReferences;

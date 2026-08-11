@@ -114,6 +114,19 @@ RAV=$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$RAUTO'"}' | jd "d[
 post mxd/records/update '{"tableId":"'$TID'","recordId":"'$RAUTO'","version":'$RAV',"cells":{"'$STATUS'":"manual"}}' >/dev/null
 check "$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$RAUTO'"}' | jd "d['data']['$STATUS']")" "looped" "field_changed automation applied + loop terminates (no infinite recursion)"
 
+# --- record history / audit — append-only trail per mutation (own table, so the
+# earlier automations on TID don't inject extra Status-update entries)
+HT=$(post mxd/tables/create '{"pageId":"'$PAGE'","title":"History Table"}')
+HTID=$(echo "$HT" | jd "d['id']"); HPRIM=$(echo "$HT" | jd "d['primaryFieldId']")
+HREC=$(post mxd/records/create '{"tableId":"'$HTID'","cells":{"'$HPRIM'":"Hist"}}')
+HRID=$(echo "$HREC" | jd "d['id']"); HRV=$(echo "$HREC" | jd "d['version']")
+post mxd/records/update '{"tableId":"'$HTID'","recordId":"'$HRID'","version":'$HRV',"cells":{"'$HPRIM'":"Hist2"}}' >/dev/null
+HH=$(post mxd/records/history '{"tableId":"'$HTID'","recordId":"'$HRID'"}')
+check "$(echo "$HH" | jd "1 if len(d)>=2 else 0")" "1" "history has >=2 entries (create + update)"
+check "$(echo "$HH" | jd "d[0]['action']")" "update" "history is most-recent-first (update on top)"
+check "$(echo "$HH" | jd "1 if any(e['action']=='create' for e in d) else 0")" "1" "history includes the create entry"
+check "$(echo "$HH" | jd "d[0]['changedFieldIds']")" "['$HPRIM']" "history records the changed field ids"
+
 # --- calendar/gallery/board view rules (roadmap F) — type-aware validation
 check "$(code mxd/views/create '{"tableId":"'$TID'","type":"calendar"}')" "400" "calendar view without a date field -> 400"
 check "$(post mxd/views/create '{"tableId":"'$TID'","type":"calendar","config":{"displayFieldId":"'$DUE'"}}' | jd "d['type']")" "calendar" "calendar view with a date field -> created"

@@ -46,6 +46,10 @@ function make(overrides: any = {}) {
     enrich: jest.fn().mockImplementation(async (_c, _f, records) => records),
   };
   const eventEmitter = { emitAsync: jest.fn().mockResolvedValue([]) };
+  const historyRepo = {
+    insert: jest.fn().mockResolvedValue(undefined),
+    listByRecord: jest.fn().mockResolvedValue([]),
+  };
   const service = new MxdRecordService(
     tableRepo as any,
     fieldRepo as any,
@@ -54,6 +58,7 @@ function make(overrides: any = {}) {
     access as any,
     compute as any,
     eventEmitter as any,
+    historyRepo as any,
   );
   return {
     service,
@@ -64,6 +69,7 @@ function make(overrides: any = {}) {
     access,
     compute,
     eventEmitter,
+    historyRepo,
   };
 }
 
@@ -220,6 +226,56 @@ describe('MxdRecordService', () => {
       const res = await service.searchRecords(ctx, 't1', 'ali', {});
       expect(res.items).toEqual([]);
       expect(recordRepo.queryView).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('history/audit', () => {
+    it('appends a create history entry with the actor and changed fields', async () => {
+      const { service, historyRepo } = make();
+      await service.createRecord(ctx, 't1', { f_name: 'Ada' });
+      const entry = historyRepo.insert.mock.calls[0][0];
+      expect(entry.action).toBe('create');
+      expect(entry.actorId).toBe('u1');
+      expect(entry.changedFieldIds).toEqual(['f_name']);
+    });
+
+    it('appends an update history entry with the after-snapshot', async () => {
+      const { service, recordRepo, historyRepo } = make({
+        updateWithVersion: jest
+          .fn()
+          .mockResolvedValue({ id: 'r1', version: 4, data: { f_name: 'new' } }),
+      });
+      await service.updateRecord(ctx, 't1', 'r1', 3, { f_name: 'new' });
+      const entry = historyRepo.insert.mock.calls[0][0];
+      expect(entry.action).toBe('update');
+      expect(entry.data).toEqual({ f_name: 'new' });
+      expect(entry.changedFieldIds).toEqual(['f_name']);
+    });
+
+    it('appends a delete history entry with the before-snapshot', async () => {
+      const { service, historyRepo } = make({
+        softDeleteWithVersion: jest
+          .fn()
+          .mockResolvedValue({ id: 'r1', version: 4, data: { f_name: 'gone' } }),
+      });
+      await service.deleteRecord(ctx, 't1', 'r1', 3);
+      const entry = historyRepo.insert.mock.calls[0][0];
+      expect(entry.action).toBe('delete');
+      expect(entry.data).toEqual({ f_name: 'gone' });
+    });
+
+    it('never fails the mutation if the audit insert throws', async () => {
+      const { service, historyRepo } = make();
+      historyRepo.insert.mockRejectedValueOnce(new Error('audit down'));
+      await expect(
+        service.createRecord(ctx, 't1', { f_name: 'Ada' }),
+      ).resolves.toBeTruthy();
+    });
+
+    it('lists history most-recent-first, capped at 200', async () => {
+      const { service, historyRepo } = make();
+      await service.listHistory(ctx, 't1', 'r1', 100000);
+      expect(historyRepo.listByRecord).toHaveBeenCalledWith('ws1', 't1', 'r1', 200);
     });
   });
 });

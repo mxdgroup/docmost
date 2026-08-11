@@ -11,7 +11,12 @@ import {
   MxdRecordRepo,
 } from '@docmost/db/repos/mxd-data/mxd-record.repo';
 import { MxdViewRepo } from '@docmost/db/repos/mxd-data/mxd-view.repo';
-import { MxdField, MxdRecord } from '@docmost/db/types/entity.types';
+import { MxdRecordHistoryRepo } from '@docmost/db/repos/mxd-data/mxd-record-history.repo';
+import {
+  MxdField,
+  MxdRecord,
+  MxdRecordHistoryEntry,
+} from '@docmost/db/types/entity.types';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   MxdContext,
@@ -49,7 +54,35 @@ export class MxdRecordService {
     private readonly access: MxdAccessService,
     private readonly compute: MxdComputeService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly historyRepo: MxdRecordHistoryRepo,
   ) {}
+
+  // Append an immutable audit entry for a record mutation. Failure to log must
+  // never fail the user's write, so it's isolated — the mutation already
+  // committed by the time this runs.
+  private async recordHistory(
+    ctx: MxdContext,
+    tableId: string,
+    recordId: string,
+    action: 'create' | 'update' | 'delete',
+    data: unknown,
+    changedFieldIds: string[],
+  ): Promise<void> {
+    try {
+      await this.historyRepo.insert({
+        workspaceId: ctx.workspaceId,
+        tableId,
+        recordId,
+        action,
+        actorId: ctx.userId,
+        actorGuestName: ctx.userId ? null : ctx.guestName ?? null,
+        data: ((data as object) ?? {}) as any,
+        changedFieldIds: changedFieldIds as any,
+      });
+    } catch {
+      // audit is best-effort; swallow so it can't break the mutation
+    }
+  }
 
   // Emit a change event (awaited) so automations run synchronously within the
   // write. emitAsync resolves immediately when there are no listeners.
@@ -148,6 +181,14 @@ export class MxdRecordService {
       creatorGuestName: ctx.userId ? null : ctx.guestName ?? null,
       updatedById: ctx.userId,
     });
+    await this.recordHistory(
+      ctx,
+      tableId,
+      record.id,
+      'create',
+      record.data,
+      Object.keys(data),
+    );
     await this.emitChanged(
       ctx,
       tableId,
@@ -343,6 +384,14 @@ export class MxdRecordService {
         'Record was modified by someone else — reload and retry',
       );
     }
+    await this.recordHistory(
+      ctx,
+      tableId,
+      recordId,
+      'update',
+      updated.data,
+      Object.keys(patch),
+    );
     await this.emitChanged(
       ctx,
       tableId,
@@ -379,6 +428,8 @@ export class MxdRecordService {
         'Record was modified by someone else — reload and retry',
       );
     }
+    // Snapshot the record's data BEFORE deletion (the soft-delete returns it).
+    await this.recordHistory(ctx, tableId, recordId, 'delete', deleted.data, []);
   }
 
   async duplicateRecord(
@@ -405,6 +456,14 @@ export class MxdRecordService {
       creatorGuestName: ctx.userId ? null : ctx.guestName ?? null,
       updatedById: ctx.userId,
     });
+    await this.recordHistory(
+      ctx,
+      tableId,
+      record.id,
+      'create',
+      record.data,
+      Object.keys((record.data as object) ?? {}),
+    );
     await this.emitChanged(
       ctx,
       tableId,
@@ -413,5 +472,22 @@ export class MxdRecordService {
       Object.keys((record.data as object) ?? {}),
     );
     return record;
+  }
+
+  // Most-recent-first audit history for a record (roadmap: history/audit).
+  async listHistory(
+    ctx: MxdContext,
+    tableId: string,
+    recordId: string,
+    limit = 50,
+  ): Promise<MxdRecordHistoryEntry[]> {
+    await this.requireTableRead(ctx, tableId);
+    const capped = Math.min(Math.max(1, limit), 200);
+    return this.historyRepo.listByRecord(
+      ctx.workspaceId,
+      tableId,
+      recordId,
+      capped,
+    );
   }
 }

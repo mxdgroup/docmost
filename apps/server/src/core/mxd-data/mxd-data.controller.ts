@@ -105,6 +105,9 @@ class SearchRecordsDto {
   @IsOptional() @IsInt() @Min(1) limit?: number;
   @IsOptional() @IsInt() @Min(0) offset?: number;
 }
+class RecordHistoryDto extends RecordIdDto {
+  @IsOptional() @IsInt() @Min(1) limit?: number;
+}
 class UpdateRecordDto extends RecordIdDto {
   @IsInt() version: number;
   @IsObject() cells: Record<string, unknown>;
@@ -445,6 +448,21 @@ export class MxdDataController {
       dto.version,
     );
     return { success: true };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('records/history')
+  recordHistory(
+    @Body() dto: RecordHistoryDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.recordService.listHistory(
+      this.ctx(user, ws),
+      dto.tableId,
+      dto.recordId,
+      dto.limit,
+    );
   }
 
   @HttpCode(HttpStatus.OK)
