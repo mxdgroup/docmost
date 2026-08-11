@@ -13,7 +13,7 @@ import {
   ViewConfig,
   ViewType,
   VIEW_TYPES,
-  validateViewConfig,
+  validateViewConfigForType,
 } from '../views/view-config';
 
 @Injectable()
@@ -43,10 +43,11 @@ export class MxdViewService {
   private async validateConfig(
     ctx: MxdContext,
     tableId: string,
+    type: ViewType,
     config: ViewConfig | undefined,
   ): Promise<ViewConfig> {
     const fields = await this.fieldRepo.listByTable(ctx.workspaceId, tableId);
-    return validateViewConfig(fields, config);
+    return validateViewConfigForType(fields, type, config);
   }
 
   async createView(
@@ -56,7 +57,7 @@ export class MxdViewService {
   ): Promise<MxdView> {
     await this.requireTable(ctx, tableId, true);
     const type = this.assertType(input.type ?? 'grid');
-    const config = await this.validateConfig(ctx, tableId, input.config);
+    const config = await this.validateConfig(ctx, tableId, type, input.config);
     const position =
       (await this.maxPosition(ctx.workspaceId, tableId)) + 1;
     return this.viewRepo.insert({
@@ -107,13 +108,32 @@ export class MxdViewService {
     input: { type?: string; config?: ViewConfig },
   ): Promise<MxdView> {
     await this.requireTable(ctx, tableId, true);
+    const existing = await this.viewRepo.findById(
+      ctx.workspaceId,
+      tableId,
+      viewId,
+    );
+    if (!existing) throw new NotFoundException('View not found');
+
     const patch: any = {};
-    if (input.type !== undefined) patch.type = this.assertType(input.type);
-    if (input.config !== undefined) {
+    // Validate the EFFECTIVE (type, config) pair: a type change must be checked
+    // against the existing config (e.g. switching to calendar needs a date
+    // field), and a config change against the effective type.
+    const effectiveType =
+      input.type !== undefined
+        ? this.assertType(input.type)
+        : (existing.type as ViewType);
+    if (input.type !== undefined) patch.type = effectiveType;
+    if (input.type !== undefined || input.config !== undefined) {
+      const effectiveConfig =
+        input.config !== undefined
+          ? input.config
+          : ((existing.config ?? {}) as ViewConfig);
       patch.config = (await this.validateConfig(
         ctx,
         tableId,
-        input.config,
+        effectiveType,
+        effectiveConfig,
       )) as any;
     }
     const updated = await this.viewRepo.update(

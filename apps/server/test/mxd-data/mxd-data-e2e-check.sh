@@ -114,6 +114,12 @@ RAV=$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$RAUTO'"}' | jd "d[
 post mxd/records/update '{"tableId":"'$TID'","recordId":"'$RAUTO'","version":'$RAV',"cells":{"'$STATUS'":"manual"}}' >/dev/null
 check "$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$RAUTO'"}' | jd "d['data']['$STATUS']")" "looped" "field_changed automation applied + loop terminates (no infinite recursion)"
 
+# --- calendar/gallery/board view rules (roadmap F) — type-aware validation
+check "$(code mxd/views/create '{"tableId":"'$TID'","type":"calendar"}')" "400" "calendar view without a date field -> 400"
+check "$(post mxd/views/create '{"tableId":"'$TID'","type":"calendar","config":{"displayFieldId":"'$DUE'"}}' | jd "d['type']")" "calendar" "calendar view with a date field -> created"
+check "$(code mxd/views/create '{"tableId":"'$TID'","type":"board","config":{"groupByFieldId":"'$DBL'"}}')" "400" "board grouped by a formula field -> 400"
+check "$(post mxd/views/create '{"tableId":"'$TID'","type":"gallery","config":{"displayFieldId":"'$PRIM'"}}' | jd "d['type']")" "gallery" "gallery view created"
+
 # --- search (roadmap: search) — OR-of-contains over text fields, injection-safe
 check "$(post mxd/records/search '{"tableId":"'$TID'","query":"Ali"}' | jd "d['total']")" "1" "search 'Ali' finds 1 record (Alice)"
 check "$(post mxd/records/search '{"tableId":"'$TID'","query":"Ali"}' | jd "d['items'][0]['data']['$PRIM']")" "Alice" "search returns the matching record"

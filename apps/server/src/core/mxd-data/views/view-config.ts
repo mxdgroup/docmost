@@ -225,3 +225,48 @@ export function validateViewConfig(
 
   return config;
 }
+
+// Type-aware validation (roadmap F). Runs the base field/operator validation,
+// then applies rules a specific view type imposes on its config. Kept here (not
+// in the service) so it's pure and unit-tested alongside the base validator.
+export function validateViewConfigForType(
+  fields: MxdField[],
+  type: ViewType,
+  config: ViewConfig | undefined | null,
+): ViewConfig {
+  const validated = validateViewConfig(fields, config);
+  const byId = new Map(fields.map((f) => [f.id, f]));
+
+  if (type === 'calendar') {
+    // A calendar places records on dates — it's meaningless without a date field
+    // to position events by. displayFieldId names that field.
+    const dfId = validated.displayFieldId;
+    if (!dfId) {
+      throw new BadRequestException(
+        'A calendar view requires a date field (set displayFieldId)',
+      );
+    }
+    const f = byId.get(dfId)!; // base validation already proved it exists
+    if (f.type !== 'date' && f.type !== 'datetime') {
+      throw new BadRequestException(
+        `Calendar date field "${f.name}" must be a date or datetime field`,
+      );
+    }
+  }
+
+  if (type === 'board') {
+    // Board grouping, when specified, must be a discrete non-computed field
+    // (computed/relation values aren't stored in the jsonb to group on).
+    if (validated.groupByFieldId) {
+      const f = byId.get(validated.groupByFieldId)!;
+      const t = getFieldType(f.type);
+      if (t.isComputed || t.isRelation) {
+        throw new BadRequestException(
+          `Board cannot group by "${f.name}" (computed/relation)`,
+        );
+      }
+    }
+  }
+
+  return validated;
+}
