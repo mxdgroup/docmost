@@ -16,6 +16,7 @@ import {
   getFieldType,
   isKnownFieldType,
 } from '../field-types/field-types.registry';
+import { compileFormula } from '../formula/formula-engine';
 
 @Injectable()
 export class MxdFieldService {
@@ -73,6 +74,17 @@ export class MxdFieldService {
       );
       if (!related) {
         throw new BadRequestException('Related table not found in workspace');
+      }
+    }
+    if (type === 'formula') {
+      const expr = (config ?? {}).expression;
+      if (!expr || typeof expr !== 'string') {
+        throw new BadRequestException('A formula field requires an expression');
+      }
+      try {
+        compileFormula(expr);
+      } catch (e: any) {
+        throw new BadRequestException(`Invalid formula: ${e?.message ?? 'parse error'}`);
       }
     }
   }

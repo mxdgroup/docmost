@@ -50,6 +50,10 @@ check "$(code mxd/records/update '{"tableId":"'$TID'","recordId":"'$R1ID'","vers
 # regression: an updated cell reads back as its value (jsonb stored as an OBJECT,
 # not a double-encoded string) — the bug the lookup E2E surfaced.
 check "$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$R1ID'"}' | jd "d['data']['$AGE']")" "31" "read-back after update returns the new value (jsonb not double-encoded)"
+# formula field (roadmap §34-36): {age} * 2, computed on read
+DBL=$(post mxd/fields/add '{"tableId":"'$TID'","name":"Doubled","type":"formula","config":{"expression":"{'$AGE'} * 2"}}' | jd "d['id']")
+check "$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$R1ID'"}' | jd "d['data']['$DBL']")" "62" "formula {age}*2 -> 62"
+check "$(code mxd/fields/add '{"tableId":"'$TID'","name":"BadF","type":"formula","config":{"expression":"1 +"}}')" "400" "invalid formula -> 400"
 check "$(post mxd/views/create '{"tableId":"'$TID'","type":"board","name":"Board"}' | jd "d['type']")" "board" "board view created"
 check "$(code mxd/records/query '{"tableId":"'$TID'","config":{"filter":{"combinator":"and","conditions":[{"fieldId":"'$AGE'","op":"contains","value":"x"}]}}}')" "400" "illegal operator (inline) -> 400"
 INJ=$(post mxd/records/query '{"tableId":"'$TID'","config":{"filter":{"combinator":"and","conditions":[{"fieldId":"'$PRIM'","op":"equals","value":"Alice'"'"' OR 1=1 --"}]}}}')

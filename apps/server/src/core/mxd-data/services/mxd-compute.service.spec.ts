@@ -71,4 +71,39 @@ describe('MxdComputeService', () => {
     const [p1] = await service.enrich(ctx, [badLookup], [{ id: 'p1', data: {} }] as any);
     expect((p1.data as any).bad).toEqual([]);
   });
+
+  it('computes formula fields in dependency order', async () => {
+    const { service } = make();
+    const fields = [
+      { id: 'amount', type: 'number' },
+      { id: 'qty', type: 'number' },
+      { id: 'total', type: 'formula', config: { expression: '{amount} * {qty}' } },
+      { id: 'withtax', type: 'formula', config: { expression: '{total} * 1.1' } },
+    ] as any[];
+    const [r] = await service.enrich(ctx, fields, [
+      { id: 'r1', data: { amount: 10, qty: 2 } },
+    ] as any);
+    expect((r.data as any).total).toBe(20);
+    expect((r.data as any).withtax).toBeCloseTo(22);
+  });
+
+  it('contains a circular formula as an error (never throws)', async () => {
+    const { service } = make();
+    const fields = [
+      { id: 'fa', type: 'formula', config: { expression: '{fb} + 1' } },
+      { id: 'fb', type: 'formula', config: { expression: '{fa} + 1' } },
+    ] as any[];
+    const [r] = await service.enrich(ctx, fields, [{ id: 'r1', data: {} }] as any);
+    expect((r.data as any).fa).toEqual({ error: 'circular reference' });
+    expect((r.data as any).fb).toEqual({ error: 'circular reference' });
+  });
+
+  it('contains a runtime formula error (div by zero) as an error', async () => {
+    const { service } = make();
+    const fields = [
+      { id: 'f', type: 'formula', config: { expression: '1 / 0' } },
+    ] as any[];
+    const [r] = await service.enrich(ctx, fields, [{ id: 'r1', data: {} }] as any);
+    expect((r.data as any).f).toHaveProperty('error');
+  });
 });

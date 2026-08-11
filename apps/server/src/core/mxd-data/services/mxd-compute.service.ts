@@ -5,6 +5,10 @@ import { MxdField, MxdRecord } from '@docmost/db/types/entity.types';
 import { MxdContext } from '../mxd-context';
 import { FieldConfig } from '../field-types/field-type';
 import { getFieldType } from '../field-types/field-types.registry';
+import {
+  CompiledFormula,
+  compileFormula,
+} from '../formula/formula-engine';
 
 // MXD data platform — computed cells: lookups + rollups (roadmap §8/§33).
 // Derived on READ and merged transiently into record.data (never persisted), so
@@ -30,7 +34,10 @@ export class MxdComputeService {
     const computed = fields.filter(
       (f) => f.type === 'lookup' || f.type === 'rollup',
     );
-    if (computed.length === 0 || records.length === 0) return records;
+    const hasFormula = fields.some((f) => f.type === 'formula');
+    if ((computed.length === 0 && !hasFormula) || records.length === 0) {
+      return records;
+    }
 
     const fieldsById = new Map(fields.map((f) => [f.id, f]));
     const recordIds = records.map((r) => r.id);
@@ -82,7 +89,83 @@ export class MxdComputeService {
             : this.aggregate(cfg.rollup, tids.length, values);
       }
     }
+
+    // Formulas last — they may reference cells, lookups, rollups, and each other.
+    this.computeFormulas(fields, records);
     return records;
+  }
+
+  // Evaluate formula fields in dependency order with cycle detection. A cyclic
+  // or broken formula yields a contained { error } value — it never throws out
+  // of enrich or corrupts the table (roadmap §35).
+  private computeFormulas(fields: MxdField[], records: MxdRecord[]): void {
+    const formulaFields = fields.filter((f) => f.type === 'formula');
+    if (formulaFields.length === 0) return;
+
+    const compiled = new Map<string, CompiledFormula | null>();
+    for (const ff of formulaFields) {
+      try {
+        compiled.set(
+          ff.id,
+          compileFormula(String((ff.config as FieldConfig)?.expression ?? '')),
+        );
+      } catch {
+        compiled.set(ff.id, null); // invalid formula -> error state below
+      }
+    }
+
+    // dependency graph among formula fields only
+    const formulaIds = new Set(formulaFields.map((f) => f.id));
+    const graph = new Map<string, string[]>();
+    for (const ff of formulaFields) {
+      const c = compiled.get(ff.id);
+      graph.set(
+        ff.id,
+        c ? c.dependencies.filter((d) => formulaIds.has(d)) : [],
+      );
+    }
+
+    // DFS topological order + cycle members (via the recursion stack)
+    const color = new Map<string, 0 | 1 | 2>();
+    const stack: string[] = [];
+    const cyclic = new Set<string>();
+    const order: string[] = [];
+    const dfs = (id: string) => {
+      color.set(id, 1);
+      stack.push(id);
+      for (const d of graph.get(id) ?? []) {
+        const c = color.get(d) ?? 0;
+        if (c === 1) {
+          const idx = stack.indexOf(d);
+          for (let k = idx; k < stack.length; k++) cyclic.add(stack[k]);
+        } else if (c === 0) {
+          dfs(d);
+        }
+      }
+      stack.pop();
+      color.set(id, 2);
+      order.push(id);
+    };
+    for (const ff of formulaFields) {
+      if ((color.get(ff.id) ?? 0) === 0) dfs(ff.id);
+    }
+
+    for (const id of order) {
+      const c = compiled.get(id);
+      for (const r of records) {
+        if (cyclic.has(id)) {
+          (r.data as any)[id] = { error: 'circular reference' };
+        } else if (!c) {
+          (r.data as any)[id] = { error: 'invalid formula' };
+        } else {
+          try {
+            (r.data as any)[id] = c.evaluate((r.data as any) ?? {});
+          } catch (e: any) {
+            (r.data as any)[id] = { error: e?.message ?? 'formula error' };
+          }
+        }
+      }
+    }
   }
 
   private aggregate(
