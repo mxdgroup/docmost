@@ -45,6 +45,7 @@ function make(overrides: any = {}) {
   const compute = {
     enrich: jest.fn().mockImplementation(async (_c, _f, records) => records),
   };
+  const eventEmitter = { emitAsync: jest.fn().mockResolvedValue([]) };
   const service = new MxdRecordService(
     tableRepo as any,
     fieldRepo as any,
@@ -52,8 +53,18 @@ function make(overrides: any = {}) {
     viewRepo as any,
     access as any,
     compute as any,
+    eventEmitter as any,
   );
-  return { service, tableRepo, fieldRepo, recordRepo, viewRepo, access, compute };
+  return {
+    service,
+    tableRepo,
+    fieldRepo,
+    recordRepo,
+    viewRepo,
+    access,
+    compute,
+    eventEmitter,
+  };
 }
 
 describe('MxdRecordService', () => {

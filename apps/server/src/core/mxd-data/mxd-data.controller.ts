@@ -18,6 +18,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  IsArray,
   IsBoolean,
   IsInt,
   IsObject,
@@ -37,6 +38,7 @@ import { MxdRecordService } from './services/mxd-record.service';
 import { MxdViewService } from './services/mxd-view.service';
 import { MxdRelationService } from './services/mxd-relation.service';
 import { MxdButtonService } from './services/mxd-button.service';
+import { MxdAutomationService } from './services/mxd-automation.service';
 
 class CreateTableDto {
   @IsString() pageId: string;
@@ -139,6 +141,23 @@ class RunButtonDto {
   @IsString() fieldId: string;
   @IsString() recordId: string;
 }
+class CreateAutomationDto {
+  @IsString() tableId: string;
+  @IsOptional() @IsString() name?: string;
+  @IsObject() trigger: Record<string, unknown>;
+  @IsArray() actions: unknown[];
+  @IsOptional() @IsBoolean() enabled?: boolean;
+}
+class AutomationIdDto {
+  @IsString() tableId: string;
+  @IsString() ruleId: string;
+}
+class UpdateAutomationDto extends AutomationIdDto {
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsObject() trigger?: Record<string, unknown>;
+  @IsOptional() @IsArray() actions?: unknown[];
+  @IsOptional() @IsBoolean() enabled?: boolean;
+}
 
 @UseGuards(JwtAuthGuard, MxdDataPlatformGuard)
 @Controller('mxd')
@@ -150,6 +169,7 @@ export class MxdDataController {
     private readonly viewService: MxdViewService,
     private readonly relationService: MxdRelationService,
     private readonly buttonService: MxdButtonService,
+    private readonly automationService: MxdAutomationService,
   ) {}
 
   private ctx(user: User, workspace: Workspace): MxdContext {
@@ -556,5 +576,66 @@ export class MxdDataController {
       dto.fieldId,
       dto.recordId,
     );
+  }
+
+  // ---- automations
+  @HttpCode(HttpStatus.OK)
+  @Post('automations/create')
+  createAutomation(
+    @Body() dto: CreateAutomationDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.automationService.createRule(this.ctx(user, ws), dto.tableId, {
+      name: dto.name,
+      trigger: dto.trigger as any,
+      actions: dto.actions as any,
+      enabled: dto.enabled,
+    });
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('automations/list')
+  listAutomations(
+    @Body() dto: TableIdDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.automationService.listRules(this.ctx(user, ws), dto.tableId);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('automations/update')
+  updateAutomation(
+    @Body() dto: UpdateAutomationDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.automationService.updateRule(
+      this.ctx(user, ws),
+      dto.tableId,
+      dto.ruleId,
+      {
+        name: dto.name,
+        trigger: dto.trigger as any,
+        actions: dto.actions as any,
+        enabled: dto.enabled,
+      },
+    );
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('automations/delete')
+  async deleteAutomation(
+    @Body() dto: AutomationIdDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    await this.automationService.deleteRule(
+      this.ctx(user, ws),
+      dto.tableId,
+      dto.ruleId,
+    );
+    return { success: true };
   }
 }

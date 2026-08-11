@@ -4,6 +4,10 @@ import { MxdFieldRepo } from './mxd-field.repo';
 import { MxdRecordRepo } from './mxd-record.repo';
 import { MxdViewRepo } from './mxd-view.repo';
 import { MxdRecordLinkRepo } from './mxd-record-link.repo';
+import {
+  MxdAutomationRuleRepo,
+  MxdAutomationRunRepo,
+} from './mxd-automation.repo';
 
 // MXD data-platform repositories. Global so the feature services (E4) can inject
 // them without re-importing per module, mirroring how the app's DatabaseModule
@@ -16,6 +20,8 @@ import { MxdRecordLinkRepo } from './mxd-record-link.repo';
     MxdRecordRepo,
     MxdViewRepo,
     MxdRecordLinkRepo,
+    MxdAutomationRuleRepo,
+    MxdAutomationRunRepo,
   ],
   exports: [
     MxdTableRepo,
@@ -23,6 +29,8 @@ import { MxdRecordLinkRepo } from './mxd-record-link.repo';
     MxdRecordRepo,
     MxdViewRepo,
     MxdRecordLinkRepo,
+    MxdAutomationRuleRepo,
+    MxdAutomationRunRepo,
   ],
 })
 export class MxdDataRepoModule {}

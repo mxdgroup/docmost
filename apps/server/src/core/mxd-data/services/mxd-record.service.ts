@@ -12,7 +12,12 @@ import {
 } from '@docmost/db/repos/mxd-data/mxd-record.repo';
 import { MxdViewRepo } from '@docmost/db/repos/mxd-data/mxd-view.repo';
 import { MxdField, MxdRecord } from '@docmost/db/types/entity.types';
-import { MxdContext } from '../mxd-context';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  MxdContext,
+  MXD_RECORD_CHANGED,
+  MxdRecordChangedEvent,
+} from '../mxd-context';
 import { MxdAccessService } from '../mxd-access.service';
 import { MxdComputeService } from './mxd-compute.service';
 import {
@@ -42,7 +47,26 @@ export class MxdRecordService {
     private readonly viewRepo: MxdViewRepo,
     private readonly access: MxdAccessService,
     private readonly compute: MxdComputeService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
+
+  // Emit a change event (awaited) so automations run synchronously within the
+  // write. emitAsync resolves immediately when there are no listeners.
+  private async emitChanged(
+    ctx: MxdContext,
+    tableId: string,
+    recordId: string,
+    triggerType: 'record_created' | 'record_updated',
+    changedFieldIds: string[],
+  ): Promise<void> {
+    await this.eventEmitter.emitAsync(MXD_RECORD_CHANGED, {
+      ctx,
+      tableId,
+      recordId,
+      triggerType,
+      changedFieldIds,
+    } as MxdRecordChangedEvent);
+  }
 
   // Load the table scoped to the workspace, then authorize against the table's
   // page/space — a valid table id is never sufficient on its own (§3/§5).
@@ -113,7 +137,7 @@ export class MxdRecordService {
       ctx.workspaceId,
       tableId,
     )) + 1;
-    return this.recordRepo.insert({
+    const record = await this.recordRepo.insert({
       tableId,
       workspaceId: ctx.workspaceId,
       data: data as any,
@@ -123,6 +147,14 @@ export class MxdRecordService {
       creatorGuestName: ctx.userId ? null : ctx.guestName ?? null,
       updatedById: ctx.userId,
     });
+    await this.emitChanged(
+      ctx,
+      tableId,
+      record.id,
+      'record_created',
+      Object.keys(data),
+    );
+    return record;
   }
 
   async getRecord(
@@ -256,6 +288,13 @@ export class MxdRecordService {
         'Record was modified by someone else — reload and retry',
       );
     }
+    await this.emitChanged(
+      ctx,
+      tableId,
+      recordId,
+      'record_updated',
+      Object.keys(patch),
+    );
     return updated;
   }
 
@@ -301,7 +340,7 @@ export class MxdRecordService {
     if (!source) throw new NotFoundException('Record not found');
     const position =
       (await this.recordRepo.maxPosition(ctx.workspaceId, tableId)) + 1;
-    return this.recordRepo.insert({
+    const record = await this.recordRepo.insert({
       tableId,
       workspaceId: ctx.workspaceId,
       data: (source.data as any) ?? {},
@@ -311,5 +350,13 @@ export class MxdRecordService {
       creatorGuestName: ctx.userId ? null : ctx.guestName ?? null,
       updatedById: ctx.userId,
     });
+    await this.emitChanged(
+      ctx,
+      tableId,
+      record.id,
+      'record_created',
+      Object.keys((record.data as object) ?? {}),
+    );
+    return record;
   }
 }

@@ -98,6 +98,22 @@ AREV2=$(post mxd/records/get '{"tableId":"'$CO_T'","recordId":"'$ACME'"}' | jd "
 post mxd/records/update '{"tableId":"'$CO_T'","recordId":"'$ACME'","version":'$AREV2',"cells":{"'$CO_REV'":75}}' >/dev/null
 check "$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$R1ID'"}' | jd "d['data']['$ROLL']")" "75" "rollup recomputes on source change -> 75 (no stale cache)"
 
+# --- automations (roadmap §39-40) — trigger -> action rules run server-side,
+# synchronously within the write (emitAsync), bounded by a loop-depth guard.
+STATUS=$(post mxd/fields/add '{"tableId":"'$TID'","name":"Status","type":"text"}' | jd "d['id']")
+A1=$(post mxd/automations/create '{"tableId":"'$TID'","name":"On create","trigger":{"type":"record_created"},"actions":[{"type":"setField","fieldId":"'$STATUS'","value":"auto"}]}')
+check "$(echo "$A1" | jd "1 if d.get('id') else 0")" "1" "automation rule created"
+check "$(post mxd/automations/list '{"tableId":"'$TID'"}' | jd "len(d)")" "1" "automations/list returns the rule"
+# a new record fires record_created -> the rule sets Status synchronously
+RAUTO=$(post mxd/records/create '{"tableId":"'$TID'","cells":{"'$PRIM'":"Zeb"}}' | jd "d['id']")
+check "$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$RAUTO'"}' | jd "d['data']['$STATUS']")" "auto" "record_created automation applied on create (sync)"
+# loop guard: field_changed(Status) -> set Status; must terminate (no-op stop),
+# not recurse forever. Update Status manually to trigger it.
+post mxd/automations/create '{"tableId":"'$TID'","name":"On status change","trigger":{"type":"field_changed","fieldId":"'$STATUS'"},"actions":[{"type":"setField","fieldId":"'$STATUS'","value":"looped"}]}' >/dev/null
+RAV=$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$RAUTO'"}' | jd "d['version']")
+post mxd/records/update '{"tableId":"'$TID'","recordId":"'$RAUTO'","version":'$RAV',"cells":{"'$STATUS'":"manual"}}' >/dev/null
+check "$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$RAUTO'"}' | jd "d['data']['$STATUS']")" "looped" "field_changed automation applied + loop terminates (no infinite recursion)"
+
 rm -f "$CJ"
 echo ""; echo "E2E: $pass passed, $fail failed"
 exit $fail

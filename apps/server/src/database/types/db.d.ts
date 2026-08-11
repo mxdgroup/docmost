@@ -703,6 +703,30 @@ export interface MxdRecordLinks {
   workspaceId: string;
 }
 
+export interface MxdAutomationRules {
+  actions: Generated<Json>;
+  createdAt: Generated<Timestamp>;
+  creatorId: string | null;
+  enabled: Generated<boolean>;
+  id: Generated<string>;
+  name: Generated<string>;
+  tableId: string;
+  trigger: Generated<Json>;
+  updatedAt: Generated<Timestamp>;
+  workspaceId: string;
+}
+
+export interface MxdAutomationRuns {
+  createdAt: Generated<Timestamp>;
+  error: string | null;
+  id: Generated<string>;
+  recordId: string;
+  ruleId: string;
+  status: string;
+  triggerType: string;
+  workspaceId: string;
+}
+
 export interface DB {
   aiChats: AiChats;
   aiChatMessages: AiChatMessages;
@@ -727,6 +751,8 @@ export interface DB {
   mxdRecords: MxdRecords;
   mxdTables: MxdTables;
   mxdViews: MxdViews;
+  mxdAutomationRules: MxdAutomationRules;
+  mxdAutomationRuns: MxdAutomationRuns;
   notifications: Notifications;
   pageAccess: PageAccess;
   pageTransclusionReferences: PageTransclusionReferences;

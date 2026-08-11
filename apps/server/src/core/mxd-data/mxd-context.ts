@@ -14,4 +14,20 @@ export interface MxdContext {
   user?: User | null;
   // Guest display name when userId is null (public share editor).
   guestName?: string | null;
+  // How deep in an automation chain this operation is. A user action starts at
+  // 0/undefined; each automation-triggered write increments it. The executor
+  // stops once it reaches the cap — the primary loop guard (roadmap §40).
+  automationDepth?: number;
+}
+
+// Emitted by the record service after a create/update so the automation executor
+// (a decoupled @OnEvent listener) can react without a circular dependency.
+export const MXD_RECORD_CHANGED = 'mxd.record.changed';
+
+export interface MxdRecordChangedEvent {
+  ctx: MxdContext;
+  tableId: string;
+  recordId: string;
+  triggerType: 'record_created' | 'record_updated';
+  changedFieldIds: string[];
 }

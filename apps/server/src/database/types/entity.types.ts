@@ -45,6 +45,8 @@ import {
   MxdRecords,
   MxdViews,
   MxdRecordLinks,
+  MxdAutomationRules,
+  MxdAutomationRuns,
 } from './db';
 import { PageEmbeddings } from '@docmost/db/types/embeddings.types';
 
@@ -282,3 +284,10 @@ export type UpdatableMxdView = Updateable<Omit<MxdViews, 'id'>>;
 export type MxdRecordLink = Selectable<MxdRecordLinks>;
 export type InsertableMxdRecordLink = Insertable<MxdRecordLinks>;
 export type UpdatableMxdRecordLink = Updateable<Omit<MxdRecordLinks, 'id'>>;
+
+export type MxdAutomationRule = Selectable<MxdAutomationRules>;
+export type InsertableMxdAutomationRule = Insertable<MxdAutomationRules>;
+export type UpdatableMxdAutomationRule = Updateable<Omit<MxdAutomationRules, 'id'>>;
+
+export type MxdAutomationRun = Selectable<MxdAutomationRuns>;
+export type InsertableMxdAutomationRun = Insertable<MxdAutomationRuns>;

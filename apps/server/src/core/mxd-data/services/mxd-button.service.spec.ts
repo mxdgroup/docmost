@@ -14,9 +14,7 @@ function make(over: any = {}) {
   const buttonConfig = over.buttonConfig ?? {
     actions: [
       { type: 'setField', fieldId: 'f_name', value: 'x' },
-      { type: 'setNow', fieldId: 'f_due' },
       { type: 'openUrl', url: 'https://example.com' },
-      { type: 'createRecord', cells: { f_name: 'new' } },
     ],
   };
   const tableRepo = {
@@ -34,38 +32,36 @@ function make(over: any = {}) {
       .mockResolvedValue('record' in over ? over.record : { id: 'r1', version: 3 }),
   };
   const access = { authorizeWrite: jest.fn().mockResolvedValue(undefined) };
-  const recordService = {
-    updateRecord: jest.fn().mockResolvedValue({ id: 'r1', version: 4 }),
-    createRecord: jest.fn().mockResolvedValue({ id: 'r2' }),
+  const actionRunner = {
+    run: jest.fn().mockResolvedValue({
+      directives: [{ type: 'openUrl', url: 'https://example.com' }],
+    }),
   };
   const service = new MxdButtonService(
     tableRepo as any,
     fieldRepo as any,
     recordRepo as any,
     access as any,
-    recordService as any,
+    actionRunner as any,
   );
-  return { service, tableRepo, fieldRepo, recordRepo, access, recordService };
+  return { service, tableRepo, fieldRepo, recordRepo, access, actionRunner };
 }
 
 describe('MxdButtonService', () => {
-  it('runs declarative actions server-side after authorizing write', async () => {
-    const { service, access, recordService } = make();
+  it('authorizes write, validates config, then delegates to the action runner (openUrl allowed)', async () => {
+    const { service, access, actionRunner } = make();
     const res = await service.run(ctx, 't1', 'f_btn', 'r1');
     expect(access.authorizeWrite).toHaveBeenCalled();
-    // setField + setNow applied in one version-checked update
-    const upd = recordService.updateRecord.mock.calls[0];
-    expect(upd[3]).toBe(3); // version
-    expect(upd[4].f_name).toBe('x');
-    expect(typeof upd[4].f_due).toBe('string'); // setNow -> a date string
-    // createRecord executed
-    expect(recordService.createRecord).toHaveBeenCalledWith(ctx, 't1', {
-      f_name: 'new',
+    const call = actionRunner.run.mock.calls[0];
+    expect(call[0]).toBe(ctx);
+    expect(call[1]).toBe('t1');
+    expect(call[2]).toBe('r1');
+    // a button run permits openUrl directives (unlike an automation)
+    expect(call[4]).toEqual({ allowOpenUrl: true });
+    expect(res).toEqual({
+      success: true,
+      directives: [{ type: 'openUrl', url: 'https://example.com' }],
     });
-    // openUrl returned as a client directive, NOT executed
-    expect(res.directives).toEqual([
-      { type: 'openUrl', url: 'https://example.com' },
-    ]);
   });
 
   it('rejects running a non-button field', async () => {
