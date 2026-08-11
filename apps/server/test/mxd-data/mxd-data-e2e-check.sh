@@ -114,6 +114,13 @@ RAV=$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$RAUTO'"}' | jd "d[
 post mxd/records/update '{"tableId":"'$TID'","recordId":"'$RAUTO'","version":'$RAV',"cells":{"'$STATUS'":"manual"}}' >/dev/null
 check "$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$RAUTO'"}' | jd "d['data']['$STATUS']")" "looped" "field_changed automation applied + loop terminates (no infinite recursion)"
 
+# --- search (roadmap: search) — OR-of-contains over text fields, injection-safe
+check "$(post mxd/records/search '{"tableId":"'$TID'","query":"Ali"}' | jd "d['total']")" "1" "search 'Ali' finds 1 record (Alice)"
+check "$(post mxd/records/search '{"tableId":"'$TID'","query":"Ali"}' | jd "d['items'][0]['data']['$PRIM']")" "Alice" "search returns the matching record"
+check "$(post mxd/records/search '{"tableId":"'$TID'","query":"nonexistent-zzz"}' | jd "d['total']")" "0" "search miss -> 0"
+check "$(post mxd/records/search '{"tableId":"'$TID'","query":"zzz'\'' OR 1=1 --"}' | jd "d['total']")" "0" "search injection payload inert (0 rows)"
+check "$(post mxd/records/search '{"tableId":"'$TID'","query":"   "}' | jd "d['total']")" "0" "blank search -> 0 (short-circuit)"
+
 # --- CSV import/export (roadmap: CSV) — round-trips data through real validation
 CT=$(post mxd/tables/create '{"pageId":"'$PAGE'","title":"CSV Table"}')
 CTID=$(echo "$CT" | jd "d['id']")

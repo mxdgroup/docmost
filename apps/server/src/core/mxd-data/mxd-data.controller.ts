@@ -99,6 +99,12 @@ class QueryRecordsDto {
   @IsOptional() @IsInt() @Min(1) limit?: number;
   @IsOptional() @IsInt() @Min(0) offset?: number;
 }
+class SearchRecordsDto {
+  @IsString() tableId: string;
+  @IsString() query: string;
+  @IsOptional() @IsInt() @Min(1) limit?: number;
+  @IsOptional() @IsInt() @Min(0) offset?: number;
+}
 class UpdateRecordDto extends RecordIdDto {
   @IsInt() version: number;
   @IsObject() cells: Record<string, unknown>;
@@ -391,6 +397,19 @@ export class MxdDataController {
     return this.recordService.queryRecords(this.ctx(user, ws), dto.tableId, {
       viewId: dto.viewId,
       config: dto.config as any,
+      limit: dto.limit,
+      offset: dto.offset,
+    });
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('records/search')
+  searchRecords(
+    @Body() dto: SearchRecordsDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.recordService.searchRecords(this.ctx(user, ws), dto.tableId, dto.query, {
       limit: dto.limit,
       offset: dto.offset,
     });

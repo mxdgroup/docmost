@@ -187,4 +187,39 @@ describe('MxdRecordService', () => {
     await service.listRecords(ctx, 't1', { limit: 100000 });
     expect(recordRepo.list.mock.calls[0][2]).toBe(200);
   });
+
+  describe('searchRecords', () => {
+    it('queries an OR-of-contains over text fields and enriches results', async () => {
+      const { service, recordRepo, access, compute } = make({
+        queryView: jest
+          .fn()
+          .mockResolvedValue({ items: [{ id: 'r1', data: {} }], total: 1 }),
+      });
+      const res = await service.searchRecords(ctx, 't1', 'ali', {});
+      expect(access.authorizeRead).toHaveBeenCalled();
+      // built a compiled WHERE and ran it through the view query path
+      expect(recordRepo.queryView).toHaveBeenCalled();
+      const where = recordRepo.queryView.mock.calls[0][2];
+      expect(where).not.toBeNull();
+      expect(compute.enrich).toHaveBeenCalled();
+      expect(res.total).toBe(1);
+    });
+
+    it('short-circuits to empty for a blank term (no query issued)', async () => {
+      const { service, recordRepo } = make();
+      const res = await service.searchRecords(ctx, 't1', '   ', {});
+      expect(res.items).toEqual([]);
+      expect(recordRepo.queryView).not.toHaveBeenCalled();
+    });
+
+    it('returns empty when the table has no text-like fields', async () => {
+      const { service, recordRepo, fieldRepo } = make();
+      fieldRepo.listByTable.mockResolvedValueOnce([
+        { id: 'f_age', type: 'number', name: 'Age', config: {} },
+      ]);
+      const res = await service.searchRecords(ctx, 't1', 'ali', {});
+      expect(res.items).toEqual([]);
+      expect(recordRepo.queryView).not.toHaveBeenCalled();
+    });
+  });
 });

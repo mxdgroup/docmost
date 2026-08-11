@@ -26,6 +26,7 @@ import {
 } from '../field-types/field-type';
 import { getFieldType } from '../field-types/field-types.registry';
 import {
+  FilterGroup,
   ViewConfig,
   sanitizeViewConfig,
   validateViewConfig,
@@ -247,6 +248,60 @@ export class MxdRecordService {
       tableId,
       where,
       order,
+      limit,
+      offset,
+    );
+    page.items = await this.compute.enrich(ctx, fields, page.items);
+    return page;
+  }
+
+  // Full-text-ish search over a table's records: case-insensitive substring
+  // match across every text-like field (roadmap: search). Implemented by
+  // constructing a validated OR-of-`contains` filter and running it through the
+  // exact same injection-safe compile+query path as views — no new SQL surface.
+  // Read authz is enforced; the term and field ids flow through the parameterized
+  // compiler, never string-concatenated.
+  async searchRecords(
+    ctx: MxdContext,
+    tableId: string,
+    term: string,
+    opts: { limit?: number; offset?: number },
+  ): Promise<MxdRecordPage> {
+    await this.requireTableRead(ctx, tableId);
+    const limit = Math.min(
+      Math.max(1, opts.limit ?? RECORD_LIST_DEFAULT),
+      RECORD_LIST_MAX,
+    );
+    const offset = Math.max(0, opts.offset ?? 0);
+
+    const q = (term ?? '').trim().slice(0, 500);
+    const fields = await this.fieldRepo.listByTable(ctx.workspaceId, tableId);
+    // Only fields whose type supports substring matching participate; cap the
+    // condition count so a very wide table can't exceed the filter bound.
+    const searchable = fields
+      .filter((f) => getFieldType(f.type).filterOperators.includes('contains'))
+      .slice(0, 40);
+
+    if (q === '' || searchable.length === 0) {
+      return { items: [], total: 0, limit, offset };
+    }
+
+    const filter: FilterGroup = {
+      combinator: 'or',
+      conditions: searchable.map((f) => ({
+        fieldId: f.id,
+        op: 'contains',
+        value: q,
+      })),
+    };
+    const config = validateViewConfig(fields, { filter });
+    const fieldsById = new Map(fields.map((f) => [f.id, f]));
+    const where = compileFilter(fieldsById, config.filter!);
+    const page = await this.recordRepo.queryView(
+      ctx.workspaceId,
+      tableId,
+      where,
+      [],
       limit,
       offset,
     );
