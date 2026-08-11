@@ -114,6 +114,23 @@ RAV=$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$RAUTO'"}' | jd "d[
 post mxd/records/update '{"tableId":"'$TID'","recordId":"'$RAUTO'","version":'$RAV',"cells":{"'$STATUS'":"manual"}}' >/dev/null
 check "$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$RAUTO'"}' | jd "d['data']['$STATUS']")" "looped" "field_changed automation applied + loop terminates (no infinite recursion)"
 
+# --- CSV import/export (roadmap: CSV) — round-trips data through real validation
+CT=$(post mxd/tables/create '{"pageId":"'$PAGE'","title":"CSV Table"}')
+CTID=$(echo "$CT" | jd "d['id']")
+TITLEF=$(post mxd/fields/add '{"tableId":"'$CTID'","name":"Title","type":"text"}' | jd "d['id']")
+SCOREF=$(post mxd/fields/add '{"tableId":"'$CTID'","name":"Score","type":"number"}' | jd "d['id']")
+# import 2 valid rows + 1 with a bad number (should be reported, not abort)
+IMP=$(post mxd/records/import-csv '{"tableId":"'$CTID'","csv":"Title,Score,Ghost\nAda,10,x\nBob,20,y\nCarol,notanumber,z"}')
+check "$(echo "$IMP" | jd "d['created']")" "2" "CSV import created 2 valid rows"
+check "$(echo "$IMP" | jd "len(d['errors'])")" "1" "CSV import reported 1 bad-number row (no abort)"
+check "$(echo "$IMP" | jd "d['errors'][0]['row']")" "4" "CSV import error points at the right line (row 4)"
+check "$(echo "$IMP" | jd "'Ghost' in d['unmappedColumns']")" "True" "CSV import reports unmapped column"
+# export back and confirm the data round-trips
+EXP=$(post mxd/records/export-csv '{"tableId":"'$CTID'"}')
+check "$(echo "$EXP" | jd "d['rowCount']")" "2" "CSV export returns 2 rows"
+check "$(echo "$EXP" | jd "1 if 'Ada' in d['csv'] and 'Bob' in d['csv'] else 0")" "1" "CSV export contains imported values"
+check "$(echo "$EXP" | jd "1 if all(c in d['csv'].split(chr(10))[0] for c in ('Title','Score')) else 0")" "1" "CSV export header includes field names"
+
 rm -f "$CJ"
 echo ""; echo "E2E: $pass passed, $fail failed"
 exit $fail

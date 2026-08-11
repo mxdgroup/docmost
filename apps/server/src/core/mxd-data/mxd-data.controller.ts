@@ -39,6 +39,7 @@ import { MxdViewService } from './services/mxd-view.service';
 import { MxdRelationService } from './services/mxd-relation.service';
 import { MxdButtonService } from './services/mxd-button.service';
 import { MxdAutomationService } from './services/mxd-automation.service';
+import { MxdCsvService } from './services/mxd-csv.service';
 
 class CreateTableDto {
   @IsString() pageId: string;
@@ -158,6 +159,10 @@ class UpdateAutomationDto extends AutomationIdDto {
   @IsOptional() @IsArray() actions?: unknown[];
   @IsOptional() @IsBoolean() enabled?: boolean;
 }
+class ImportCsvDto {
+  @IsString() tableId: string;
+  @IsString() csv: string;
+}
 
 @UseGuards(JwtAuthGuard, MxdDataPlatformGuard)
 @Controller('mxd')
@@ -170,6 +175,7 @@ export class MxdDataController {
     private readonly relationService: MxdRelationService,
     private readonly buttonService: MxdButtonService,
     private readonly automationService: MxdAutomationService,
+    private readonly csvService: MxdCsvService,
   ) {}
 
   private ctx(user: User, workspace: Workspace): MxdContext {
@@ -434,6 +440,26 @@ export class MxdDataController {
       dto.tableId,
       dto.recordId,
     );
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('records/export-csv')
+  exportCsv(
+    @Body() dto: TableIdDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.csvService.exportCsv(this.ctx(user, ws), dto.tableId);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('records/import-csv')
+  importCsv(
+    @Body() dto: ImportCsvDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.csvService.importCsv(this.ctx(user, ws), dto.tableId, dto.csv);
   }
 
   // ---- views

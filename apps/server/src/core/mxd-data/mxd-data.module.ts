@@ -10,6 +10,7 @@ import { MxdComputeService } from './services/mxd-compute.service';
 import { MxdButtonService } from './services/mxd-button.service';
 import { MxdActionRunner } from './services/mxd-action-runner.service';
 import { MxdAutomationService } from './services/mxd-automation.service';
+import { MxdCsvService } from './services/mxd-csv.service';
 import { MxdDataPlatformGuard } from './mxd-data-platform.guard';
 import { MxdAccessService } from './mxd-access.service';
 
@@ -29,6 +30,7 @@ import { MxdAccessService } from './mxd-access.service';
     MxdButtonService,
     MxdActionRunner,
     MxdAutomationService,
+    MxdCsvService,
     MxdAccessService,
     MxdDataPlatformGuard,
   ],
