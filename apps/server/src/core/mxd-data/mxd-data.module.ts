@@ -7,6 +7,7 @@ import { MxdRecordService } from './services/mxd-record.service';
 import { MxdViewService } from './services/mxd-view.service';
 import { MxdRelationService } from './services/mxd-relation.service';
 import { MxdComputeService } from './services/mxd-compute.service';
+import { MxdButtonService } from './services/mxd-button.service';
 import { MxdDataPlatformGuard } from './mxd-data-platform.guard';
 import { MxdAccessService } from './mxd-access.service';
 
@@ -23,6 +24,7 @@ import { MxdAccessService } from './mxd-access.service';
     MxdViewService,
     MxdRelationService,
     MxdComputeService,
+    MxdButtonService,
     MxdAccessService,
     MxdDataPlatformGuard,
   ],

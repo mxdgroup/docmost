@@ -244,6 +244,17 @@ const relation: FieldType = {
   },
 };
 
+// Button: not a value at all — a declarative action trigger. It stores no cell
+// and exposes no filter operators; clicking it runs server-authorized actions
+// via the button endpoint.
+const button: FieldType = {
+  key: 'button',
+  filterOperators: [],
+  normalize: () => {
+    throw new FieldValidationError('button is an action trigger, not a value');
+  },
+};
+
 // Computed types: derived server-side on READ, read-only to clients, and NOT
 // persisted into the `data` jsonb. They therefore expose NO filter operators —
 // filtering/sorting them via the jsonb compiler would silently match nothing
@@ -275,6 +286,7 @@ const REGISTRY: Record<string, FieldType> = Object.freeze({
   email,
   user,
   relation,
+  button,
   lookup: computed('lookup'),
   rollup: computed('rollup'),
   formula: computed('formula'),

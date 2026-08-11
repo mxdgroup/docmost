@@ -36,6 +36,7 @@ import { MxdFieldService } from './services/mxd-field.service';
 import { MxdRecordService } from './services/mxd-record.service';
 import { MxdViewService } from './services/mxd-view.service';
 import { MxdRelationService } from './services/mxd-relation.service';
+import { MxdButtonService } from './services/mxd-button.service';
 
 class CreateTableDto {
   @IsString() pageId: string;
@@ -133,6 +134,11 @@ class RelationListDto {
   @IsString() fieldId: string;
   @IsString() recordId: string;
 }
+class RunButtonDto {
+  @IsString() tableId: string;
+  @IsString() fieldId: string;
+  @IsString() recordId: string;
+}
 
 @UseGuards(JwtAuthGuard, MxdDataPlatformGuard)
 @Controller('mxd')
@@ -143,6 +149,7 @@ export class MxdDataController {
     private readonly recordService: MxdRecordService,
     private readonly viewService: MxdViewService,
     private readonly relationService: MxdRelationService,
+    private readonly buttonService: MxdButtonService,
   ) {}
 
   private ctx(user: User, workspace: Workspace): MxdContext {
@@ -533,5 +540,21 @@ export class MxdDataController {
     @AuthWorkspace() ws: Workspace,
   ) {
     return this.relationService.listRelated(this.ctx(user, ws), dto);
+  }
+
+  // ---- buttons
+  @HttpCode(HttpStatus.OK)
+  @Post('buttons/run')
+  runButton(
+    @Body() dto: RunButtonDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() ws: Workspace,
+  ) {
+    return this.buttonService.run(
+      this.ctx(user, ws),
+      dto.tableId,
+      dto.fieldId,
+      dto.recordId,
+    );
   }
 }

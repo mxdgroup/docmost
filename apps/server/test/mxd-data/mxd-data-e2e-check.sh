@@ -63,6 +63,13 @@ DR1V=$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$R1ID'"}' | jd "d[
 post mxd/records/update '{"tableId":"'$TID'","recordId":"'$R1ID'","version":'$DR1V',"cells":{"'$DUE'":"2026-06-15"}}' >/dev/null
 check "$(code mxd/records/query '{"tableId":"'$TID'","config":{"filter":{"combinator":"and","conditions":[{"fieldId":"'$DUE'","op":"between","value":["2026-01-01","2026-12-31"]}]}}}')" "200" "between on a date field -> 200 (no numeric-cast 500)"
 check "$(code mxd/records/query '{"tableId":"'$TID'","config":{"filter":{"combinator":"and","conditions":[{"fieldId":"'$DUE'","op":"between","value":["2026-06-15"]}]}}}')" "400" "between with a 1-element array -> 400"
+# buttons (roadmap §37-38): declarative, server-authorized actions
+BTN=$(post mxd/fields/add '{"tableId":"'$TID'","name":"SetAge","type":"button","config":{"actions":[{"type":"setField","fieldId":"'$AGE'","value":100},{"type":"openUrl","url":"https://example.com/go"}]}}' | jd "d['id']")
+check "$([ -n "$BTN" ] && echo ok)" "ok" "button field created"
+check "$(code mxd/fields/add '{"tableId":"'$TID'","name":"BadBtn","type":"button","config":{"actions":[{"type":"runShell","cmd":"x"}]}}')" "400" "button with arbitrary action type -> 400"
+RUN=$(post mxd/buttons/run '{"tableId":"'$TID'","fieldId":"'$BTN'","recordId":"'$R1ID'"}')
+check "$(echo "$RUN" | jd "d['directives'][0]['url']")" "https://example.com/go" "button run returns openUrl directive"
+check "$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$R1ID'"}' | jd "d['data']['$AGE']")" "100" "button setField applied (Age -> 100)"
 check "$(post mxd/views/create '{"tableId":"'$TID'","type":"board","name":"Board"}' | jd "d['type']")" "board" "board view created"
 check "$(code mxd/records/query '{"tableId":"'$TID'","config":{"filter":{"combinator":"and","conditions":[{"fieldId":"'$AGE'","op":"contains","value":"x"}]}}}')" "400" "illegal operator (inline) -> 400"
 INJ=$(post mxd/records/query '{"tableId":"'$TID'","config":{"filter":{"combinator":"and","conditions":[{"fieldId":"'$PRIM'","op":"equals","value":"Alice'"'"' OR 1=1 --"}]}}}')

@@ -17,6 +17,7 @@ import {
   isKnownFieldType,
 } from '../field-types/field-types.registry';
 import { compileFormula } from '../formula/formula-engine';
+import { validateButtonConfig } from '../buttons/button-config';
 
 @Injectable()
 export class MxdFieldService {
@@ -58,9 +59,14 @@ export class MxdFieldService {
   // real table in the caller's workspace (never a client-asserted foreign id).
   private async validateTypeConfig(
     ctx: MxdContext,
+    tableId: string,
     type: string,
     config: FieldConfig | undefined,
   ): Promise<void> {
+    if (type === 'button') {
+      const fields = await this.fieldRepo.listByTable(ctx.workspaceId, tableId);
+      validateButtonConfig(fields, config as any);
+    }
     if (type === 'relation') {
       const relatedTableId = (config ?? {}).relatedTableId;
       if (!relatedTableId || typeof relatedTableId !== 'string') {
@@ -109,7 +115,7 @@ export class MxdFieldService {
     if (existing.some((f) => f.name.toLowerCase() === name.toLowerCase())) {
       throw new BadRequestException(`A field named "${name}" already exists`);
     }
-    await this.validateTypeConfig(ctx, input.type, input.config);
+    await this.validateTypeConfig(ctx, tableId, input.type, input.config);
     const position =
       (await this.fieldRepo.maxPosition(ctx.workspaceId, tableId)) + 1;
     return this.fieldRepo.insert({
@@ -175,7 +181,7 @@ export class MxdFieldService {
     // Re-validate per-type config on UPDATE, not just at creation — otherwise a
     // relation field's relatedTableId could be silently repointed to any table
     // (incl. one the owner can't read), and a formula could be set to garbage.
-    await this.validateTypeConfig(ctx, field.type, config);
+    await this.validateTypeConfig(ctx, tableId, field.type, config);
     const updated = await this.fieldRepo.update(ctx.workspaceId, tableId, fieldId, {
       config: (config ?? {}) as any,
     });
@@ -202,7 +208,7 @@ export class MxdFieldService {
     const target = getFieldType(newType);
     const config = (opts.config ?? field.config ?? {}) as FieldConfig;
     // Validate the target type's config (relation relatedTableId, formula expr).
-    await this.validateTypeConfig(ctx, newType, config);
+    await this.validateTypeConfig(ctx, tableId, newType, config);
 
     // Read AND write in ONE transaction with the rows locked (FOR UPDATE), so a
     // concurrent updateRecord can't interleave a change that a later replaceData
