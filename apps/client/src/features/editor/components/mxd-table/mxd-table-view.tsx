@@ -6,7 +6,6 @@ import {
   Badge,
   Button,
   Card,
-  Checkbox,
   Group,
   Loader,
   Menu,
@@ -18,7 +17,17 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { IconPlus } from "@tabler/icons-react";
+import {
+  IconCopy,
+  IconDots,
+  IconDownload,
+  IconHistory,
+  IconPlus,
+  IconSearch,
+  IconTrash,
+  IconUpload,
+  IconX,
+} from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -28,16 +37,25 @@ import {
   mxdCreateRecord,
   mxdCreateTable,
   mxdCreateView,
+  mxdDeleteRecord,
+  mxdDuplicateRecord,
+  mxdExportCsv,
   mxdListFields,
   mxdListViews,
   mxdQueryRecords,
+  mxdSearchRecords,
   mxdUpdateRecord,
 } from "@/features/mxd-data/mxd-data.api.ts";
+import { MxdCell } from "@/features/mxd-data/components/mxd-cell.tsx";
+import { MxdAddColumnModal } from "@/features/mxd-data/components/mxd-add-column-modal.tsx";
+import { MxdImportCsvModal } from "@/features/mxd-data/components/mxd-import-csv-modal.tsx";
+import { MxdHistoryModal } from "@/features/mxd-data/components/mxd-history-modal.tsx";
 
 // MXD data platform — the mxdTable NodeView (roadmap §16/§20/§23). Renders the
 // relational grid/list/board referenced by node.attrs.tableId, fetched through
 // the /mxd API. Row data is never read from the ProseMirror document. Records are
-// loaded via records/query so the active view's filter/sort apply server-side.
+// loaded via records/query so the active view's filter/sort apply server-side;
+// a non-empty search box switches the source to records/search.
 export default function MxdTableView(props: NodeViewProps) {
   const tableId: string | null = props.node.attrs.tableId ?? null;
   const editable = props.editor.isEditable;
@@ -45,6 +63,11 @@ export default function MxdTableView(props: NodeViewProps) {
   const [activeViewId, setActiveViewId] = useState<string | null>(
     props.node.attrs.viewId ?? null,
   );
+  const [search, setSearch] = useState("");
+  const [addColumnOpen, setAddColumnOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [historyRecordId, setHistoryRecordId] = useState<string | null>(null);
+  const searching = search.trim().length > 0;
 
   const fieldsQuery = useQuery<MxdField[]>({
     queryKey: ["mxd-fields", tableId],
@@ -70,6 +93,13 @@ export default function MxdTableView(props: NodeViewProps) {
         limit: 200,
       }),
     enabled: !!tableId && !!activeView,
+  });
+
+  const searchQuery = useQuery({
+    queryKey: ["mxd-search", tableId, search.trim()],
+    queryFn: () =>
+      mxdSearchRecords({ tableId: tableId as string, query: search.trim() }),
+    enabled: !!tableId && searching,
   });
 
   const refresh = () =>
@@ -109,6 +139,57 @@ export default function MxdTableView(props: NodeViewProps) {
       notifications.show({
         color: "red",
         message: err?.response?.data?.message ?? "Could not add a row",
+      });
+    }
+  };
+
+  const duplicateRow = async (record: MxdRecord) => {
+    try {
+      await mxdDuplicateRecord({ tableId: tableId as string, recordId: record.id });
+      refresh();
+    } catch (err: any) {
+      notifications.show({
+        color: "red",
+        message: err?.response?.data?.message ?? "Could not duplicate the row",
+      });
+    }
+  };
+
+  const deleteRow = async (record: MxdRecord) => {
+    try {
+      await mxdDeleteRecord({
+        tableId: tableId as string,
+        recordId: record.id,
+        version: record.version,
+      });
+      refresh();
+    } catch (err: any) {
+      const status = err?.response?.status;
+      notifications.show({
+        color: status === 409 ? "yellow" : "red",
+        message:
+          status === 409
+            ? "This record changed elsewhere — reloading latest."
+            : (err?.response?.data?.message ?? "Could not delete the row"),
+      });
+      refresh();
+    }
+  };
+
+  const exportCsv = async () => {
+    try {
+      const res = await mxdExportCsv(tableId as string);
+      downloadText(res.filename, res.csv);
+      if (res.truncated) {
+        notifications.show({
+          color: "yellow",
+          message: `Export capped at ${res.rowCount} rows`,
+        });
+      }
+    } catch (err: any) {
+      notifications.show({
+        color: "red",
+        message: err?.response?.data?.message ?? "Export failed",
       });
     }
   };
@@ -181,48 +262,129 @@ export default function MxdTableView(props: NodeViewProps) {
   }
 
   const fields = fieldsQuery.data ?? [];
-  const records = recordsQuery.data?.items ?? [];
+  const records = searching
+    ? (searchQuery.data?.items ?? [])
+    : (recordsQuery.data?.items ?? []);
+  const recordsLoading = searching
+    ? searchQuery.isLoading
+    : recordsQuery.isLoading;
 
   const rendererProps = { fields, records, editable, commitCell };
 
   return (
     <NodeViewWrapper>
-      <Group justify="space-between" mb="xs" wrap="nowrap">
-        <SegmentedControl
-          size="xs"
-          value={activeView?.id ?? ""}
-          onChange={(v) => setActiveViewId(v)}
-          data={views.map((v) => ({ label: v.name, value: v.id }))}
-        />
-        {editable && (
-          <Menu shadow="md" position="bottom-end">
-            <Menu.Target>
-              <ActionIcon size="sm" variant="light" aria-label="Add view">
+      {/* toolbar */}
+      <Group justify="space-between" mb="xs" wrap="nowrap" gap="xs">
+        <Group gap="xs" wrap="nowrap">
+          <SegmentedControl
+            size="xs"
+            value={activeView?.id ?? ""}
+            onChange={(v) => setActiveViewId(v)}
+            data={views.map((v) => ({ label: v.name, value: v.id }))}
+          />
+          {editable && (
+            <Menu shadow="md" position="bottom-start">
+              <Menu.Target>
+                <ActionIcon size="sm" variant="light" aria-label="Add view">
+                  <IconPlus size={16} />
+                </ActionIcon>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Label>Add view</Menu.Label>
+                <Menu.Item onClick={() => addView("grid")}>Grid</Menu.Item>
+                <Menu.Item onClick={() => addView("list")}>List</Menu.Item>
+                <Menu.Item onClick={() => addView("board")}>Board</Menu.Item>
+                <Menu.Item onClick={() => addView("gallery")}>Gallery</Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          )}
+        </Group>
+
+        <Group gap="xs" wrap="nowrap">
+          <TextInput
+            size="xs"
+            placeholder="Search…"
+            leftSection={<IconSearch size={14} />}
+            rightSection={
+              search ? (
+                <ActionIcon
+                  size="xs"
+                  variant="subtle"
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
+                >
+                  <IconX size={12} />
+                </ActionIcon>
+              ) : null
+            }
+            value={search}
+            onChange={(e) => setSearch(e.currentTarget.value)}
+            w={180}
+          />
+          {editable && (
+            <>
+              <ActionIcon
+                size="sm"
+                variant="light"
+                aria-label="Add column"
+                onClick={() => setAddColumnOpen(true)}
+                title="Add column"
+              >
                 <IconPlus size={16} />
               </ActionIcon>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Item onClick={() => addView("grid")}>Grid</Menu.Item>
-              <Menu.Item onClick={() => addView("list")}>List</Menu.Item>
-              <Menu.Item onClick={() => addView("board")}>Board</Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
-        )}
+              <Menu shadow="md" position="bottom-end">
+                <Menu.Target>
+                  <ActionIcon size="sm" variant="light" aria-label="Data menu">
+                    <IconDots size={16} />
+                  </ActionIcon>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item
+                    leftSection={<IconDownload size={14} />}
+                    onClick={exportCsv}
+                  >
+                    Export CSV
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<IconUpload size={14} />}
+                    onClick={() => setImportOpen(true)}
+                  >
+                    Import CSV
+                  </Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
+            </>
+          )}
+        </Group>
       </Group>
 
-      {recordsQuery.isLoading ? (
+      {recordsLoading ? (
         <Group justify="center" my="md">
           <Loader size="sm" />
         </Group>
+      ) : searching || activeView?.type === "grid" || !activeView ? (
+        <GridView
+          {...rendererProps}
+          onDuplicate={duplicateRow}
+          onDelete={deleteRow}
+          onHistory={(r) => setHistoryRecordId(r.id)}
+        />
       ) : activeView?.type === "board" ? (
         <BoardView {...rendererProps} view={activeView} />
+      ) : activeView?.type === "gallery" ? (
+        <GalleryView {...rendererProps} view={activeView} />
       ) : activeView?.type === "list" ? (
         <ListView {...rendererProps} />
       ) : (
-        <GridView {...rendererProps} />
+        <GridView
+          {...rendererProps}
+          onDuplicate={duplicateRow}
+          onDelete={deleteRow}
+          onHistory={(r) => setHistoryRecordId(r.id)}
+        />
       )}
 
-      {editable && (
+      {editable && !searching && (
         <Group mt="xs">
           <Button size="compact-xs" variant="light" onClick={addRow}>
             + Add row
@@ -234,6 +396,28 @@ export default function MxdTableView(props: NodeViewProps) {
           )}
         </Group>
       )}
+      {searching && (
+        <Text size="xs" c="dimmed" mt="xs">
+          {records.length} match(es) for “{search.trim()}”
+        </Text>
+      )}
+
+      <MxdAddColumnModal
+        tableId={tableId}
+        opened={addColumnOpen}
+        onClose={() => setAddColumnOpen(false)}
+      />
+      <MxdImportCsvModal
+        tableId={tableId}
+        opened={importOpen}
+        onClose={() => setImportOpen(false)}
+      />
+      <MxdHistoryModal
+        tableId={tableId}
+        recordId={historyRecordId}
+        fields={fields}
+        onClose={() => setHistoryRecordId(null)}
+      />
     </NodeViewWrapper>
   );
 }
@@ -245,7 +429,27 @@ interface RendererProps {
   commitCell: (record: MxdRecord, fieldId: string, value: unknown) => void;
 }
 
-function GridView({ fields, records, editable, commitCell }: RendererProps) {
+interface GridProps extends RendererProps {
+  onDuplicate: (record: MxdRecord) => void;
+  onDelete: (record: MxdRecord) => void;
+  onHistory: (record: MxdRecord) => void;
+}
+
+function GridView({
+  fields,
+  records,
+  editable,
+  commitCell,
+  onDuplicate,
+  onDelete,
+  onHistory,
+}: GridProps) {
+  // A single cell coordinate is in edit mode at a time.
+  const [editing, setEditing] = useState<{
+    recordId: string;
+    fieldId: string;
+  } | null>(null);
+
   return (
     <ScrollArea type="auto">
       <div
@@ -260,6 +464,7 @@ function GridView({ fields, records, editable, commitCell }: RendererProps) {
               {fields.map((f) => (
                 <Table.Th key={f.id}>{f.name}</Table.Th>
               ))}
+              {editable && <Table.Th w={40} />}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -269,17 +474,61 @@ function GridView({ fields, records, editable, commitCell }: RendererProps) {
                   <Table.Td key={f.id}>
                     <MxdCell
                       field={f}
-                      record={record}
-                      editable={editable}
-                      onCommit={(v) => commitCell(record, f.id, v)}
+                      value={record.data?.[f.id]}
+                      readOnly={!editable}
+                      editing={
+                        editing?.recordId === record.id &&
+                        editing?.fieldId === f.id
+                      }
+                      onStartEdit={() =>
+                        setEditing({ recordId: record.id, fieldId: f.id })
+                      }
+                      onCommit={(v) => {
+                        setEditing(null);
+                        commitCell(record, f.id, v);
+                      }}
+                      onCancel={() => setEditing(null)}
                     />
                   </Table.Td>
                 ))}
+                {editable && (
+                  <Table.Td>
+                    <Menu shadow="md" position="bottom-end" withinPortal>
+                      <Menu.Target>
+                        <ActionIcon size="sm" variant="subtle" aria-label="Row actions">
+                          <IconDots size={16} />
+                        </ActionIcon>
+                      </Menu.Target>
+                      <Menu.Dropdown>
+                        <Menu.Item
+                          leftSection={<IconCopy size={14} />}
+                          onClick={() => onDuplicate(record)}
+                        >
+                          Duplicate
+                        </Menu.Item>
+                        <Menu.Item
+                          leftSection={<IconHistory size={14} />}
+                          onClick={() => onHistory(record)}
+                        >
+                          History
+                        </Menu.Item>
+                        <Menu.Divider />
+                        <Menu.Item
+                          color="red"
+                          leftSection={<IconTrash size={14} />}
+                          onClick={() => onDelete(record)}
+                        >
+                          Delete
+                        </Menu.Item>
+                      </Menu.Dropdown>
+                    </Menu>
+                  </Table.Td>
+                )}
               </Table.Tr>
             ))}
             {records.length === 0 && (
               <Table.Tr>
-                <Table.Td colSpan={Math.max(1, fields.length)}>
+                <Table.Td colSpan={Math.max(1, fields.length) + (editable ? 1 : 0)}>
                   <Text size="sm" c="dimmed" ta="center">
                     No rows yet.
                   </Text>
@@ -293,19 +542,16 @@ function GridView({ fields, records, editable, commitCell }: RendererProps) {
   );
 }
 
-function ListView({ fields, records, editable, commitCell }: RendererProps) {
+function ListView({ fields, records }: RendererProps) {
   const primary = fields[0];
   const rest = fields.slice(1, 4);
   return (
     <Stack gap={6}>
       {records.map((record) => (
         <Paper key={record.id} withBorder p="xs" radius="sm">
-          <MxdCell
-            field={primary}
-            record={record}
-            editable={editable}
-            onCommit={(v) => commitCell(record, primary.id, v)}
-          />
+          <Text size="sm" fw={500}>
+            {formatCell(record.data?.[primary?.id]) || "—"}
+          </Text>
           <Group gap="md" mt={4}>
             {rest.map((f) => (
               <Text key={f.id} size="xs" c="dimmed">
@@ -324,6 +570,34 @@ function ListView({ fields, records, editable, commitCell }: RendererProps) {
   );
 }
 
+function GalleryView({ fields, records }: RendererProps & { view: MxdView }) {
+  const primary = fields[0];
+  const rest = fields.slice(1, 4);
+  return (
+    <Group align="flex-start" gap="sm">
+      {records.map((record) => (
+        <Card key={record.id} withBorder padding="sm" radius="sm" w={200}>
+          <Text size="sm" fw={600} truncate>
+            {formatCell(record.data?.[primary?.id]) || "—"}
+          </Text>
+          <Stack gap={2} mt={4}>
+            {rest.map((f) => (
+              <Text key={f.id} size="xs" c="dimmed" truncate>
+                {f.name}: {formatCell(record.data?.[f.id])}
+              </Text>
+            ))}
+          </Stack>
+        </Card>
+      ))}
+      {records.length === 0 && (
+        <Text size="sm" c="dimmed">
+          No rows yet.
+        </Text>
+      )}
+    </Group>
+  );
+}
+
 function BoardView({
   fields,
   records,
@@ -335,13 +609,9 @@ function BoardView({
   const groupField = fields.find((f) => f.id === groupFieldId);
   const primary = fields[0];
 
-  // Columns come from a select field's choices; fall back to a single column.
   const choices: { id: string; label: string }[] =
-    groupField?.config?.choices ?? [];
-  const columns = [
-    ...choices,
-    { id: "__none__", label: "Uncategorized" },
-  ];
+    groupField?.config?.options ?? groupField?.config?.choices ?? [];
+  const columns = [...choices, { id: "__none__", label: "Uncategorized" }];
 
   if (!groupField) {
     return (
@@ -363,13 +633,7 @@ function BoardView({
   const onDrop = (recordId: string, choiceId: string) => {
     const record = records.find((r) => r.id === recordId);
     if (!record) return;
-    // Moving a card = a validated record mutation (server rechecks authz,
-    // version, and that the value is an allowed choice) — item §21.
-    commitCell(
-      record,
-      groupField.id,
-      choiceId === "__none__" ? null : choiceId,
-    );
+    commitCell(record, groupField.id, choiceId === "__none__" ? null : choiceId);
   };
 
   return (
@@ -406,7 +670,7 @@ function BoardView({
                     e.dataTransfer.setData("text/mxd-record", record.id)
                   }
                 >
-                  <Text size="sm">{formatCell(record.data?.[primary.id])}</Text>
+                  <Text size="sm">{formatCell(record.data?.[primary?.id])}</Text>
                 </Card>
               ))}
             </Stack>
@@ -421,88 +685,18 @@ function formatCell(value: unknown): string {
   if (value == null) return "";
   if (Array.isArray(value)) return value.join(", ");
   if (typeof value === "boolean") return value ? "✓" : "";
+  if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
 
-function MxdCell({
-  field,
-  record,
-  editable,
-  onCommit,
-}: {
-  field: MxdField;
-  record: MxdRecord;
-  editable: boolean;
-  onCommit: (value: unknown) => void;
-}) {
-  const stored = record.data?.[field.id];
-
-  if (field.type === "checkbox") {
-    return (
-      <Checkbox
-        size="xs"
-        checked={!!stored}
-        disabled={!editable}
-        onChange={(e) => onCommit(e.currentTarget.checked)}
-      />
-    );
-  }
-
-  const readOnly =
-    !editable ||
-    [
-      "formula",
-      "lookup",
-      "rollup",
-      "relation",
-      "created_time",
-      "updated_time",
-      "created_by",
-      "updated_by",
-      "autonumber",
-    ].includes(field.type);
-
-  return (
-    <EditableText
-      value={stored == null ? "" : String(stored)}
-      readOnly={readOnly}
-      onCommit={onCommit}
-    />
-  );
-}
-
-function EditableText({
-  value,
-  readOnly,
-  onCommit,
-}: {
-  value: string;
-  readOnly: boolean;
-  onCommit: (value: unknown) => void;
-}) {
-  const [local, setLocal] = useState(value);
-  const [lastValue, setLastValue] = useState(value);
-  if (value !== lastValue) {
-    setLastValue(value);
-    setLocal(value);
-  }
-
-  if (readOnly) {
-    return <Text size="sm">{value}</Text>;
-  }
-
-  return (
-    <TextInput
-      size="xs"
-      variant="unstyled"
-      value={local}
-      onChange={(e) => setLocal(e.currentTarget.value)}
-      onBlur={() => {
-        if (local !== value) onCommit(local === "" ? null : local);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") e.currentTarget.blur();
-      }}
-    />
-  );
+function downloadText(filename: string, text: string) {
+  const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
