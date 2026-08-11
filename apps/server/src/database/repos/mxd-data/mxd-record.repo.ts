@@ -147,7 +147,10 @@ export class MxdRecordRepo {
     return dbOrTx(this.db, trx)
       .updateTable('mxdRecords')
       .set({
-        data: JSON.stringify(data) as unknown as any,
+        // Pass the object (like insert) so pg serializes it to a jsonb OBJECT;
+        // JSON.stringify here double-encodes it into a jsonb STRING and breaks
+        // every subsequent cell read.
+        data: data as any,
         version: expectedVersion + 1,
         updatedById,
         updatedAt: new Date(),
@@ -227,10 +230,29 @@ export class MxdRecordRepo {
   ): Promise<void> {
     await dbOrTx(this.db, trx)
       .updateTable('mxdRecords')
-      .set({ data: JSON.stringify(data) as unknown as any, updatedAt: new Date() })
+      .set({ data: data as any, updatedAt: new Date() })
       .where('id', '=', recordId)
       .where('tableId', '=', tableId)
       .where('workspaceId', '=', workspaceId)
+      .execute();
+  }
+
+  // Batch-fetch live records by id within a table (used by lookup/rollup compute
+  // to resolve relation targets without an N+1 per record).
+  async findByIds(
+    workspaceId: string,
+    tableId: string,
+    ids: string[],
+    trx?: KyselyTransaction,
+  ): Promise<MxdRecord[]> {
+    if (ids.length === 0) return [];
+    return dbOrTx(this.db, trx)
+      .selectFrom('mxdRecords')
+      .selectAll()
+      .where('workspaceId', '=', workspaceId)
+      .where('tableId', '=', tableId)
+      .where('id', 'in', ids)
+      .where('deletedAt', 'is', null)
       .execute();
   }
 

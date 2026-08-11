@@ -47,6 +47,9 @@ check "$(echo "$Q" | jd "d['items'][0]['data']['$PRIM']")" "Alice" "server-side 
 
 post mxd/records/update '{"tableId":"'$TID'","recordId":"'$R1ID'","version":'$R1V',"cells":{"'$AGE'":31}}' >/dev/null
 check "$(code mxd/records/update '{"tableId":"'$TID'","recordId":"'$R1ID'","version":'$R1V',"cells":{"'$AGE'":99}}')" "409" "stale-version update -> 409"
+# regression: an updated cell reads back as its value (jsonb stored as an OBJECT,
+# not a double-encoded string) — the bug the lookup E2E surfaced.
+check "$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$R1ID'"}' | jd "d['data']['$AGE']")" "31" "read-back after update returns the new value (jsonb not double-encoded)"
 check "$(post mxd/views/create '{"tableId":"'$TID'","type":"board","name":"Board"}' | jd "d['type']")" "board" "board view created"
 check "$(code mxd/records/query '{"tableId":"'$TID'","config":{"filter":{"combinator":"and","conditions":[{"fieldId":"'$AGE'","op":"contains","value":"x"}]}}}')" "400" "illegal operator (inline) -> 400"
 INJ=$(post mxd/records/query '{"tableId":"'$TID'","config":{"filter":{"combinator":"and","conditions":[{"fieldId":"'$PRIM'","op":"equals","value":"Alice'"'"' OR 1=1 --"}]}}}')
@@ -64,6 +67,16 @@ check "$(code mxd/relations/link '{"tableId":"'$TID'","fieldId":"'$REL_F'","from
 check "$(post mxd/relations/list '{"tableId":"'$TID'","fieldId":"'$REL_F'","recordId":"'$R1ID'"}' | jd "d[0]['data']['$CO_P']")" "Acme" "listRelated returns Acme"
 # IDOR: linking to a People record (not in Companies) via Employer -> 400
 check "$(code mxd/relations/link '{"tableId":"'$TID'","fieldId":"'$REL_F'","fromRecordId":"'$R1ID'","toRecordId":"'$R1ID'"}')" "400" "link outside related table -> 400 (IDOR)"
+
+# --- lookups / rollups (roadmap §8/§33) — R1 is linked to Acme (single relation)
+CO_REV=$(post mxd/fields/add '{"tableId":"'$CO_T'","name":"Rev","type":"number"}' | jd "d['id']")
+AREV=$(post mxd/records/get '{"tableId":"'$CO_T'","recordId":"'$ACME'"}' | jd "d['version']")
+post mxd/records/update '{"tableId":"'$CO_T'","recordId":"'$ACME'","version":'$AREV',"cells":{"'$CO_REV'":50}}' >/dev/null
+ROLL=$(post mxd/fields/add '{"tableId":"'$TID'","name":"CoRev","type":"rollup","config":{"viaFieldId":"'$REL_F'","targetFieldId":"'$CO_REV'","rollup":"sum"}}' | jd "d['id']")
+check "$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$R1ID'"}' | jd "d['data']['$ROLL']")" "50" "rollup sum over relation -> 50"
+AREV2=$(post mxd/records/get '{"tableId":"'$CO_T'","recordId":"'$ACME'"}' | jd "d['version']")
+post mxd/records/update '{"tableId":"'$CO_T'","recordId":"'$ACME'","version":'$AREV2',"cells":{"'$CO_REV'":75}}' >/dev/null
+check "$(post mxd/records/get '{"tableId":"'$TID'","recordId":"'$R1ID'"}' | jd "d['data']['$ROLL']")" "75" "rollup recomputes on source change -> 75 (no stale cache)"
 
 rm -f "$CJ"
 echo ""; echo "E2E: $pass passed, $fail failed"

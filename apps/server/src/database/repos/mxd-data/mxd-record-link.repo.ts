@@ -47,6 +47,24 @@ export class MxdRecordLinkRepo {
       .execute();
   }
 
+  // Batch: all outgoing edges for a set of source records on one field (used by
+  // lookup/rollup compute to avoid an N+1 per record).
+  async listFromMany(
+    workspaceId: string,
+    fieldId: string,
+    fromRecordIds: string[],
+    trx?: KyselyTransaction,
+  ): Promise<MxdRecordLink[]> {
+    if (fromRecordIds.length === 0) return [];
+    return dbOrTx(this.db, trx)
+      .selectFrom('mxdRecordLinks')
+      .selectAll()
+      .where('workspaceId', '=', workspaceId)
+      .where('fieldId', '=', fieldId)
+      .where('fromRecordId', 'in', fromRecordIds)
+      .execute();
+  }
+
   // Incoming edges (reciprocal display, roadmap §7).
   async listTo(
     workspaceId: string,

@@ -14,6 +14,7 @@ import { MxdViewRepo } from '@docmost/db/repos/mxd-data/mxd-view.repo';
 import { MxdField, MxdRecord } from '@docmost/db/types/entity.types';
 import { MxdContext } from '../mxd-context';
 import { MxdAccessService } from '../mxd-access.service';
+import { MxdComputeService } from './mxd-compute.service';
 import {
   FieldConfig,
   FieldValidationError,
@@ -40,6 +41,7 @@ export class MxdRecordService {
     private readonly recordRepo: MxdRecordRepo,
     private readonly viewRepo: MxdViewRepo,
     private readonly access: MxdAccessService,
+    private readonly compute: MxdComputeService,
   ) {}
 
   // Load the table scoped to the workspace, then authorize against the table's
@@ -135,7 +137,9 @@ export class MxdRecordService {
       recordId,
     );
     if (!record) throw new NotFoundException('Record not found');
-    return record;
+    const fields = await this.fieldRepo.listByTable(ctx.workspaceId, tableId);
+    const [enriched] = await this.compute.enrich(ctx, fields, [record]);
+    return enriched;
   }
 
   async listRecords(
@@ -149,7 +153,15 @@ export class MxdRecordService {
       RECORD_LIST_MAX,
     );
     const offset = Math.max(0, opts.offset ?? 0);
-    return this.recordRepo.list(ctx.workspaceId, tableId, limit, offset);
+    const page = await this.recordRepo.list(
+      ctx.workspaceId,
+      tableId,
+      limit,
+      offset,
+    );
+    const fields = await this.fieldRepo.listByTable(ctx.workspaceId, tableId);
+    page.items = await this.compute.enrich(ctx, fields, page.items);
+    return page;
   }
 
   // Query records through a view: apply the view's (or an inline) filter + sort,
@@ -198,7 +210,7 @@ export class MxdRecordService {
       RECORD_LIST_MAX,
     );
     const offset = Math.max(0, opts.offset ?? 0);
-    return this.recordRepo.queryView(
+    const page = await this.recordRepo.queryView(
       ctx.workspaceId,
       tableId,
       where,
@@ -206,6 +218,8 @@ export class MxdRecordService {
       limit,
       offset,
     );
+    page.items = await this.compute.enrich(ctx, fields, page.items);
+    return page;
   }
 
   // Optimistic-concurrency update. The caller passes the version it read; a

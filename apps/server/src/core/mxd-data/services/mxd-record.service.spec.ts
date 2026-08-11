@@ -42,14 +42,18 @@ function make(overrides: any = {}) {
     authorizeWrite: jest.fn().mockResolvedValue(undefined),
     canRead: jest.fn().mockResolvedValue(true),
   };
+  const compute = {
+    enrich: jest.fn().mockImplementation(async (_c, _f, records) => records),
+  };
   const service = new MxdRecordService(
     tableRepo as any,
     fieldRepo as any,
     recordRepo as any,
     viewRepo as any,
     access as any,
+    compute as any,
   );
-  return { service, tableRepo, fieldRepo, recordRepo, viewRepo, access };
+  return { service, tableRepo, fieldRepo, recordRepo, viewRepo, access, compute };
 }
 
 describe('MxdRecordService', () => {
