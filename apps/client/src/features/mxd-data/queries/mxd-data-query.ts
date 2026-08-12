@@ -7,11 +7,18 @@ import {
 import { notifications } from "@mantine/notifications";
 import {
   MxdField,
+  MxdRecord,
   MxdRecordPage,
+  MxdRelationEdge,
   MxdTable,
   MxdView,
   MxdHistoryEntry,
   mxdAddField,
+  mxdLinkRelation,
+  mxdListRecords,
+  mxdListRelated,
+  mxdListTables,
+  mxdUnlinkRelation,
   mxdChangeFieldType,
   mxdCreateRecord,
   mxdCreateView,
@@ -69,6 +76,18 @@ export function useMxdFields(tableId: string): UseQueryResult<MxdField[]> {
     queryKey: keys.fields(tableId),
     queryFn: () => mxdListFields(tableId),
     enabled: !!tableId,
+  });
+}
+
+// Sibling tables in a space — the pool a relation field can point at.
+export function useMxdTables(
+  spaceId: string,
+  enabled = true,
+): UseQueryResult<MxdTable[]> {
+  return useQuery({
+    queryKey: ["mxd-tables", spaceId],
+    queryFn: () => mxdListTables(spaceId),
+    enabled: enabled && !!spaceId,
   });
 }
 
@@ -260,4 +279,55 @@ export function useMxdSearch(tableId: string) {
   return useMutation({
     mutationFn: (query: string) => mxdSearchRecords({ tableId, query }),
   });
+}
+
+// ---- relations. Linked records are edges (mxd_record_links), fetched per
+// (record, relation field) rather than living in the record's cells.
+export function useMxdRelated(
+  tableId: string,
+  fieldId: string,
+  recordId: string,
+  enabled = true,
+): UseQueryResult<MxdRecord[]> {
+  return useQuery({
+    queryKey: ["mxd-relation", tableId, fieldId, recordId],
+    queryFn: () => mxdListRelated({ tableId, fieldId, recordId }),
+    enabled: enabled && !!tableId && !!fieldId && !!recordId,
+  });
+}
+
+// The related table's own record list — the pool of candidates to link. Keyed
+// by the related table id so it's shared/cached across all cells of the field.
+export function useMxdRecordsList(
+  tableId: string,
+  enabled = true,
+): UseQueryResult<MxdRecordPage> {
+  return useQuery({
+    queryKey: ["mxd-records", tableId, "all"],
+    queryFn: () => mxdListRecords(tableId, { limit: 200 }),
+    enabled: enabled && !!tableId,
+  });
+}
+
+export function useMxdRelationMutations(tableId: string) {
+  const qc = useQueryClient();
+  const invalidate = (fieldId: string, recordId: string) => {
+    qc.invalidateQueries({
+      queryKey: ["mxd-relation", tableId, fieldId, recordId],
+    });
+    // rollups/lookups over this relation are derived on read — refresh records.
+    qc.invalidateQueries({ queryKey: ["mxd-records", tableId] });
+  };
+
+  const link = useMutation({
+    mutationFn: (edge: MxdRelationEdge) => mxdLinkRelation(edge),
+    onSuccess: (_r, edge) => invalidate(edge.fieldId, edge.fromRecordId),
+    onError: (e) => notifyError(e, "Could not link the record"),
+  });
+  const unlink = useMutation({
+    mutationFn: (edge: MxdRelationEdge) => mxdUnlinkRelation(edge),
+    onSuccess: (_r, edge) => invalidate(edge.fieldId, edge.fromRecordId),
+    onError: (e) => notifyError(e, "Could not unlink the record"),
+  });
+  return { link, unlink };
 }

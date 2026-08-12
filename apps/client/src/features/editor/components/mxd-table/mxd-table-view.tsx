@@ -47,7 +47,13 @@ import {
   mxdUpdateRecord,
 } from "@/features/mxd-data/mxd-data.api.ts";
 import { MxdCell } from "@/features/mxd-data/components/mxd-cell.tsx";
+import { MxdRelationCell } from "@/features/mxd-data/components/mxd-relation-cell.tsx";
+import {
+  MxdRelationPickerModal,
+  RelationTarget,
+} from "@/features/mxd-data/components/mxd-relation-picker-modal.tsx";
 import { MxdFieldSettingsModal } from "@/features/mxd-data/components/mxd-field-settings-modal.tsx";
+import { fieldTypeMeta } from "@/features/mxd-data/mxd-field-types.ts";
 import { MxdAddColumnModal } from "@/features/mxd-data/components/mxd-add-column-modal.tsx";
 import { MxdImportCsvModal } from "@/features/mxd-data/components/mxd-import-csv-modal.tsx";
 import { MxdHistoryModal } from "@/features/mxd-data/components/mxd-history-modal.tsx";
@@ -69,6 +75,9 @@ export default function MxdTableView(props: NodeViewProps) {
   const [importOpen, setImportOpen] = useState(false);
   const [historyRecordId, setHistoryRecordId] = useState<string | null>(null);
   const [settingsField, setSettingsField] = useState<MxdField | null>(null);
+  const [relationTarget, setRelationTarget] = useState<RelationTarget | null>(
+    null,
+  );
   const searching = search.trim().length > 0;
 
   const fieldsQuery = useQuery<MxdField[]>({
@@ -382,10 +391,12 @@ export default function MxdTableView(props: NodeViewProps) {
       ) : searching || activeView?.type === "grid" || !activeView ? (
         <GridView
           {...rendererProps}
+          tableId={tableId}
           onDuplicate={duplicateRow}
           onDelete={deleteRow}
           onHistory={(r) => setHistoryRecordId(r.id)}
           onEditField={setSettingsField}
+          onOpenRelation={setRelationTarget}
         />
       ) : activeView?.type === "board" ? (
         <BoardView {...rendererProps} view={activeView} />
@@ -396,10 +407,12 @@ export default function MxdTableView(props: NodeViewProps) {
       ) : (
         <GridView
           {...rendererProps}
+          tableId={tableId}
           onDuplicate={duplicateRow}
           onDelete={deleteRow}
           onHistory={(r) => setHistoryRecordId(r.id)}
           onEditField={setSettingsField}
+          onOpenRelation={setRelationTarget}
         />
       )}
 
@@ -442,6 +455,11 @@ export default function MxdTableView(props: NodeViewProps) {
         field={settingsField}
         onClose={() => setSettingsField(null)}
       />
+      <MxdRelationPickerModal
+        tableId={tableId}
+        target={relationTarget}
+        onClose={() => setRelationTarget(null)}
+      />
     </NodeViewWrapper>
   );
 }
@@ -454,13 +472,16 @@ interface RendererProps {
 }
 
 interface GridProps extends RendererProps {
+  tableId: string;
   onDuplicate: (record: MxdRecord) => void;
   onDelete: (record: MxdRecord) => void;
   onHistory: (record: MxdRecord) => void;
   onEditField: (field: MxdField) => void;
+  onOpenRelation: (target: RelationTarget) => void;
 }
 
 function GridView({
+  tableId,
   fields,
   records,
   editable,
@@ -469,6 +490,7 @@ function GridView({
   onDelete,
   onHistory,
   onEditField,
+  onOpenRelation,
 }: GridProps) {
   // A single cell coordinate is in edit mode at a time.
   const [editing, setEditing] = useState<{
@@ -518,27 +540,41 @@ function GridView({
           <Table.Tbody>
             {records.map((record) => (
               <Table.Tr key={record.id}>
-                {fields.map((f) => (
-                  <Table.Td key={f.id}>
-                    <MxdCell
-                      field={f}
-                      value={record.data?.[f.id]}
-                      readOnly={!editable}
-                      editing={
-                        editing?.recordId === record.id &&
-                        editing?.fieldId === f.id
-                      }
-                      onStartEdit={() =>
-                        setEditing({ recordId: record.id, fieldId: f.id })
-                      }
-                      onCommit={(v) => {
-                        setEditing(null);
-                        commitCell(record, f.id, v);
-                      }}
-                      onCancel={() => setEditing(null)}
-                    />
-                  </Table.Td>
-                ))}
+                {fields.map((f) =>
+                  fieldTypeMeta(f.type).relation ? (
+                    <Table.Td key={f.id}>
+                      <MxdRelationCell
+                        tableId={tableId}
+                        field={f}
+                        record={record}
+                        editable={editable}
+                        onOpen={() =>
+                          onOpenRelation({ field: f, record })
+                        }
+                      />
+                    </Table.Td>
+                  ) : (
+                    <Table.Td key={f.id}>
+                      <MxdCell
+                        field={f}
+                        value={record.data?.[f.id]}
+                        readOnly={!editable}
+                        editing={
+                          editing?.recordId === record.id &&
+                          editing?.fieldId === f.id
+                        }
+                        onStartEdit={() =>
+                          setEditing({ recordId: record.id, fieldId: f.id })
+                        }
+                        onCommit={(v) => {
+                          setEditing(null);
+                          commitCell(record, f.id, v);
+                        }}
+                        onCancel={() => setEditing(null)}
+                      />
+                    </Table.Td>
+                  ),
+                )}
                 {editable && (
                   <Table.Td>
                     {/* Plain icons with a native title — NOT a Mantine Menu or

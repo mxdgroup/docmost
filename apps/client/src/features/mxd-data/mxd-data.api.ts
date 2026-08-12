@@ -40,6 +40,9 @@ export interface MxdTable {
 export const mxdGetTable = (tableId: string): Promise<MxdTable> =>
   api.post("/mxd/tables/get", { tableId }).then((r) => r.data);
 
+export const mxdListTables = (spaceId: string): Promise<MxdTable[]> =>
+  api.post("/mxd/tables/list", { spaceId }).then((r) => r.data);
+
 export const mxdCreateTable = (input: {
   pageId: string;
   title?: string;
