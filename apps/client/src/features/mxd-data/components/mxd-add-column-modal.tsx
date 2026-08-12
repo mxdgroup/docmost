@@ -6,6 +6,10 @@ import {
   useMxdTable,
   useMxdTables,
 } from "../queries/mxd-data-query";
+import {
+  MxdFieldConfigEditor,
+  isComputedConfigValid,
+} from "./mxd-field-config-editor";
 
 interface Props {
   tableId: string;
@@ -13,13 +17,24 @@ interface Props {
   onClose: () => void;
 }
 
-// Add a column. Settable types plus Relation (which needs a target table).
-// Computed columns (formula/lookup/rollup) are added through their own flow.
+// Computed / derived types that carry their own config (edited via the config
+// editor). Relation is handled separately (it only needs a target table).
+const COMPUTED_TYPES = [
+  { value: "formula", label: "Formula" },
+  { value: "lookup", label: "Lookup" },
+  { value: "rollup", label: "Rollup" },
+];
+const isComputed = (t: string) =>
+  COMPUTED_TYPES.some((c) => c.value === t);
+
+// Add a column: settable types, Relation (needs a target table), or a computed
+// type (formula / lookup / rollup) with its config.
 export function MxdAddColumnModal({ tableId, opened, onClose }: Props) {
   const { add } = useMxdFieldMutations(tableId);
   const [name, setName] = useState("");
   const [type, setType] = useState<string>("text");
   const [relatedTableId, setRelatedTableId] = useState<string | null>(null);
+  const [config, setConfig] = useState<Record<string, any>>({});
 
   const table = useMxdTable(tableId);
   const spaceId = table.data?.spaceId ?? "";
@@ -28,30 +43,39 @@ export function MxdAddColumnModal({ tableId, opened, onClose }: Props) {
   const typeOptions = [
     ...MXD_SETTABLE_FIELD_TYPES.map((t) => ({ value: t.key, label: t.label })),
     { value: "relation", label: "Relation" },
+    ...COMPUTED_TYPES,
   ];
 
   const reset = () => {
     setName("");
     setType("text");
     setRelatedTableId(null);
+    setConfig({});
   };
 
+  const canSubmit =
+    !!name.trim() &&
+    (type !== "relation" || !!relatedTableId) &&
+    (!isComputed(type) || isComputedConfigValid(type, config));
+
   const submit = async () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    if (type === "relation" && !relatedTableId) return;
+    if (!canSubmit) return;
     await add.mutateAsync({
-      name: trimmed,
+      name: name.trim(),
       type,
       config:
-        type === "relation" ? { relatedTableId, single: false } : undefined,
+        type === "relation"
+          ? { relatedTableId, single: false }
+          : isComputed(type)
+            ? config
+            : undefined,
     });
     reset();
     onClose();
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Add column" size="sm" centered>
+    <Modal opened={opened} onClose={onClose} title="Add column" size="md" centered>
       <Stack>
         <TextInput
           label="Name"
@@ -59,14 +83,19 @@ export function MxdAddColumnModal({ tableId, opened, onClose }: Props) {
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
           data-autofocus
-          onKeyDown={(e) => e.key === "Enter" && submit()}
+          onKeyDown={(e) => e.key === "Enter" && !isComputed(type) && submit()}
         />
         <Select
           label="Type"
           value={type}
-          onChange={(v) => setType(v ?? "text")}
+          onChange={(v) => {
+            setType(v ?? "text");
+            setConfig({});
+            setRelatedTableId(null);
+          }}
           data={typeOptions}
           comboboxProps={{ withinPortal: true }}
+          maxDropdownHeight={280}
         />
         {type === "relation" && (
           <Select
@@ -82,17 +111,19 @@ export function MxdAddColumnModal({ tableId, opened, onClose }: Props) {
             comboboxProps={{ withinPortal: true }}
           />
         )}
+        {isComputed(type) && (
+          <MxdFieldConfigEditor
+            tableId={tableId}
+            type={type}
+            config={config}
+            onChange={setConfig}
+          />
+        )}
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            onClick={submit}
-            loading={add.isPending}
-            disabled={
-              !name.trim() || (type === "relation" && !relatedTableId)
-            }
-          >
+          <Button onClick={submit} loading={add.isPending} disabled={!canSubmit}>
             Add column
           </Button>
         </Group>

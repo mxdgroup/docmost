@@ -18,12 +18,19 @@ import {
   fieldTypeMeta,
 } from "../mxd-field-types";
 import { useMxdFieldMutations } from "../queries/mxd-data-query";
+import {
+  MxdFieldConfigEditor,
+  isComputedConfigValid,
+} from "./mxd-field-config-editor";
 
 interface Choice {
   id: string;
   label: string;
   color?: string;
 }
+
+const isComputedType = (t: string) =>
+  t === "formula" || t === "lookup" || t === "rollup";
 
 interface Props {
   tableId: string;
@@ -62,6 +69,7 @@ export function MxdFieldSettingsModal({ tableId, field, onClose }: Props) {
   const [name, setName] = useState("");
   const [type, setType] = useState("text");
   const [choices, setChoices] = useState<Choice[]>([]);
+  const [computedConfig, setComputedConfig] = useState<Record<string, any>>({});
 
   // Reset the form whenever a different field is opened.
   useEffect(() => {
@@ -69,6 +77,7 @@ export function MxdFieldSettingsModal({ tableId, field, onClose }: Props) {
     setName(field.name);
     setType(field.type);
     setChoices(((field.config?.choices as Choice[]) ?? []).map((c) => ({ ...c })));
+    setComputedConfig({ ...(field.config ?? {}) });
   }, [field]);
 
   if (!field) return null;
@@ -114,6 +123,12 @@ export function MxdFieldSettingsModal({ tableId, field, onClose }: Props) {
       JSON.stringify((field.config?.choices as Choice[]) ?? []) !==
         JSON.stringify(cleanChoices);
 
+    // Computed fields (formula/lookup/rollup): the config editor is the source
+    // of truth for their config; save it if it changed.
+    const computedChanged =
+      isComputedType(field.type) &&
+      JSON.stringify(field.config ?? {}) !== JSON.stringify(computedConfig);
+
     try {
       if (nameChanged) {
         await rename.mutateAsync({ fieldId: field.id, name: trimmed });
@@ -127,6 +142,11 @@ export function MxdFieldSettingsModal({ tableId, field, onClose }: Props) {
         });
       } else if (choicesChanged) {
         await updateConfig.mutateAsync({ fieldId: field.id, config: nextConfig });
+      } else if (computedChanged) {
+        await updateConfig.mutateAsync({
+          fieldId: field.id,
+          config: computedConfig,
+        });
       }
       onClose();
     } catch {
@@ -175,6 +195,15 @@ export function MxdFieldSettingsModal({ tableId, field, onClose }: Props) {
               {meta.label} (not changeable here)
             </Text>
           </div>
+        )}
+
+        {isComputedType(field.type) && (
+          <MxdFieldConfigEditor
+            tableId={tableId}
+            type={field.type}
+            config={computedConfig}
+            onChange={setComputedConfig}
+          />
         )}
 
         {showChoices && (
@@ -250,7 +279,14 @@ export function MxdFieldSettingsModal({ tableId, field, onClose }: Props) {
             <Button variant="default" onClick={onClose}>
               Cancel
             </Button>
-            <Button onClick={save} loading={pending && !remove.isPending}>
+            <Button
+              onClick={save}
+              loading={pending && !remove.isPending}
+              disabled={
+                isComputedType(field.type) &&
+                !isComputedConfigValid(field.type, computedConfig)
+              }
+            >
               Save
             </Button>
           </Group>
