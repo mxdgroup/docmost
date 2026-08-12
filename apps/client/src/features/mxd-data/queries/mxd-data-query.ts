@@ -15,8 +15,13 @@ import {
   MxdHistoryEntry,
   mxdAddField,
   MxdAutomationRule,
+  MxdForm,
   mxdCreateAutomation,
+  mxdCreateForm,
   mxdDeleteAutomation,
+  mxdDeleteForm,
+  mxdListForms,
+  mxdUpdateForm,
   mxdLinkRelation,
   mxdListAutomations,
   mxdListRecords,
@@ -312,6 +317,54 @@ export function useMxdRecordsList(
     queryFn: () => mxdListRecords(tableId, { limit: 200 }),
     enabled: enabled && !!tableId,
   });
+}
+
+// ---- forms
+export function useMxdForms(
+  tableId: string,
+  enabled = true,
+): UseQueryResult<MxdForm[]> {
+  return useQuery({
+    queryKey: ["mxd-forms", tableId],
+    queryFn: () => mxdListForms(tableId),
+    enabled: enabled && !!tableId,
+  });
+}
+
+export function useMxdFormMutations(tableId: string) {
+  const qc = useQueryClient();
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: ["mxd-forms", tableId] });
+
+  const create = useMutation({
+    mutationFn: (input: {
+      title?: string;
+      description?: string;
+      fieldIds: string[];
+      submitMessage?: string;
+      enabled?: boolean;
+    }) => mxdCreateForm({ tableId, ...input }),
+    onSuccess: invalidate,
+    onError: (e) => notifyError(e, "Could not create the form"),
+  });
+  const update = useMutation({
+    mutationFn: (input: {
+      formId: string;
+      title?: string;
+      description?: string;
+      fieldIds?: string[];
+      submitMessage?: string;
+      enabled?: boolean;
+    }) => mxdUpdateForm({ tableId, ...input }),
+    onSuccess: invalidate,
+    onError: (e) => notifyError(e, "Could not update the form"),
+  });
+  const remove = useMutation({
+    mutationFn: (formId: string) => mxdDeleteForm({ tableId, formId }),
+    onSuccess: invalidate,
+    onError: (e) => notifyError(e, "Could not delete the form"),
+  });
+  return { create, update, remove };
 }
 
 // ---- automations

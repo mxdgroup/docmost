@@ -21,6 +21,7 @@ import {
   IconBolt,
   IconCopy,
   IconDots,
+  IconForms,
   IconDownload,
   IconHistory,
   IconPlus,
@@ -57,6 +58,7 @@ import {
 import { MxdFieldSettingsModal } from "@/features/mxd-data/components/mxd-field-settings-modal.tsx";
 import { MxdAutomationsModal } from "@/features/mxd-data/components/mxd-automations-modal.tsx";
 import { MxdCalendarView } from "@/features/mxd-data/components/mxd-calendar-view.tsx";
+import { MxdFormsModal } from "@/features/mxd-data/components/mxd-forms-modal.tsx";
 import { fieldTypeMeta } from "@/features/mxd-data/mxd-field-types.ts";
 import { MxdAddColumnModal } from "@/features/mxd-data/components/mxd-add-column-modal.tsx";
 import { MxdImportCsvModal } from "@/features/mxd-data/components/mxd-import-csv-modal.tsx";
@@ -83,6 +85,7 @@ export default function MxdTableView(props: NodeViewProps) {
     null,
   );
   const [automationsOpen, setAutomationsOpen] = useState(false);
+  const [formsOpen, setFormsOpen] = useState(false);
   const searching = search.trim().length > 0;
 
   const fieldsQuery = useQuery<MxdField[]>({
@@ -433,6 +436,12 @@ export default function MxdTableView(props: NodeViewProps) {
                   >
                     Automations…
                   </Menu.Item>
+                  <Menu.Item
+                    leftSection={<IconForms size={14} />}
+                    onClick={() => setFormsOpen(true)}
+                  >
+                    Forms…
+                  </Menu.Item>
                 </Menu.Dropdown>
               </Menu>
             </>
@@ -528,6 +537,11 @@ export default function MxdTableView(props: NodeViewProps) {
         tableId={tableId}
         opened={automationsOpen}
         onClose={() => setAutomationsOpen(false)}
+      />
+      <MxdFormsModal
+        tableId={tableId}
+        opened={formsOpen}
+        onClose={() => setFormsOpen(false)}
       />
     </NodeViewWrapper>
   );

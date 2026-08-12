@@ -296,3 +296,63 @@ export const mxdRecordHistory = (input: {
   limit?: number;
 }): Promise<MxdHistoryEntry[]> =>
   api.post("/mxd/records/history", input).then((r) => r.data);
+
+// ---- forms
+export interface MxdForm {
+  id: string;
+  tableId: string;
+  key: string;
+  title: string;
+  description: string | null;
+  fieldIds: string[];
+  enabled: boolean;
+  submitMessage: string | null;
+}
+export const mxdListForms = (tableId: string): Promise<MxdForm[]> =>
+  api.post("/mxd/forms/list", { tableId }).then((r) => r.data);
+export const mxdCreateForm = (input: {
+  tableId: string;
+  title?: string;
+  description?: string;
+  fieldIds: string[];
+  submitMessage?: string;
+  enabled?: boolean;
+}): Promise<MxdForm> =>
+  api.post("/mxd/forms/create", input).then((r) => r.data);
+export const mxdUpdateForm = (input: {
+  tableId: string;
+  formId: string;
+  title?: string;
+  description?: string;
+  fieldIds?: string[];
+  submitMessage?: string;
+  enabled?: boolean;
+}): Promise<MxdForm> =>
+  api.post("/mxd/forms/update", input).then((r) => r.data);
+export const mxdDeleteForm = (input: {
+  tableId: string;
+  formId: string;
+}): Promise<{ success: boolean }> =>
+  api.post("/mxd/forms/delete", input).then((r) => r.data);
+
+// public (anonymous)
+export interface MxdPublicFormField {
+  id: string;
+  name: string;
+  type: string;
+  choices?: { id: string; label: string; color?: string }[];
+}
+export interface MxdPublicForm {
+  key: string;
+  title: string;
+  description: string | null;
+  submitMessage: string | null;
+  fields: MxdPublicFormField[];
+}
+export const mxdGetPublicForm = (key: string): Promise<MxdPublicForm> =>
+  api.post("/mxd/public/forms/get", { key }).then((r) => r.data);
+export const mxdSubmitForm = (
+  key: string,
+  values: Record<string, unknown>,
+): Promise<{ success: boolean }> =>
+  api.post("/mxd/public/forms/submit", { key, values }).then((r) => r.data);
