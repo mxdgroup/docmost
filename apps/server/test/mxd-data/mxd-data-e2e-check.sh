@@ -157,6 +157,19 @@ check "$(echo "$EXP" | jd "d['rowCount']")" "2" "CSV export returns 2 rows"
 check "$(echo "$EXP" | jd "1 if 'Ada' in d['csv'] and 'Bob' in d['csv'] else 0")" "1" "CSV export contains imported values"
 check "$(echo "$EXP" | jd "1 if all(c in d['csv'].split(chr(10))[0] for c in ('Title','Score')) else 0")" "1" "CSV export header includes field names"
 
+# --- forms (public form → creates a record; anonymous submit path)
+FORM=$(post mxd/forms/create '{"tableId":"'$TID'","title":"Signup","fieldIds":["'$PRIM'","'$AGE'"]}')
+FKEY=$(echo "$FORM" | jd "d['key']")
+check "$(echo "$FORM" | jd "1 if d.get('key') else 0")" "1" "form created with a public key"
+check "$(code mxd/forms/create '{"tableId":"'$TID'","fieldIds":["'$DBL'"]}')" "400" "form rejects a computed field"
+PUB=$(post mxd/public/forms/get '{"key":"'$FKEY'"}')
+check "$(echo "$PUB" | jd "len(d['fields'])")" "2" "public form exposes only its 2 whitelisted fields"
+check "$(echo "$PUB" | jd "d['title']")" "Signup" "public form returns its title"
+post mxd/public/forms/submit '{"key":"'$FKEY'","values":{"'$PRIM'":"FormSubmitted","'$AGE'":30}}' >/dev/null
+check "$(post mxd/records/search '{"tableId":"'$TID'","query":"FormSubmitted"}' | jd "d['total']")" "1" "public submit created a record (found via search)"
+check "$(code mxd/public/forms/submit '{"key":"'$FKEY'","values":{"'$DBL'":1}}')" "400" "public submit rejects a field not on the form"
+check "$(code mxd/public/forms/get '{"key":"nonexistent-key"}')" "404" "unknown form key -> 404"
+
 rm -f "$CJ"
 echo ""; echo "E2E: $pass passed, $fail failed"
 exit $fail

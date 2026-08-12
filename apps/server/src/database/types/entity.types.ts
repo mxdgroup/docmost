@@ -48,6 +48,7 @@ import {
   MxdAutomationRules,
   MxdAutomationRuns,
   MxdRecordHistory,
+  MxdForms,
 } from './db';
 import { PageEmbeddings } from '@docmost/db/types/embeddings.types';
 
@@ -295,3 +296,7 @@ export type InsertableMxdAutomationRun = Insertable<MxdAutomationRuns>;
 
 export type MxdRecordHistoryEntry = Selectable<MxdRecordHistory>;
 export type InsertableMxdRecordHistory = Insertable<MxdRecordHistory>;
+
+export type MxdForm = Selectable<MxdForms>;
+export type InsertableMxdForm = Insertable<MxdForms>;
+export type UpdatableMxdForm = Updateable<Omit<MxdForms, 'id' | 'key'>>;
