@@ -1,14 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
+  Anchor,
+  Badge,
   Checkbox,
+  Group,
+  MultiSelect,
   Select,
   Text,
   TextInput,
-  Tooltip,
-  Anchor,
 } from "@mantine/core";
 import { MxdField } from "../mxd-data.api";
 import { fieldTypeMeta, renderCellText } from "../mxd-field-types";
+
+interface Choice {
+  id: string;
+  label: string;
+  color?: string;
+}
 
 interface MxdCellProps {
   field: MxdField;
@@ -20,10 +28,17 @@ interface MxdCellProps {
   onCancel: () => void;
 }
 
+function getChoices(field: MxdField): Choice[] {
+  return (field.config?.choices as Choice[]) ?? [];
+}
+function choiceById(field: MxdField): Map<string, Choice> {
+  return new Map(getChoices(field).map((c) => [c.id, c]));
+}
+
 // A single grid cell. Settable types render an inline editor when `editing`;
 // computed/relation/button types are always read-only display; checkboxes toggle
-// on a single click. The server is the source of truth for validation — this only
-// coerces the obvious cases (number, checkbox, date) so a valid value round-trips.
+// on a single click. Select/multi-select display their choice LABELS (with color)
+// rather than the stored ids. The server is the source of truth for validation.
 export function MxdCell({
   field,
   value,
@@ -36,7 +51,6 @@ export function MxdCell({
   const meta = fieldTypeMeta(field.type);
   const locked = readOnly || meta.computed || meta.relation || meta.button;
 
-  // Read-only cell types: computed values, relation summaries, buttons.
   if (locked) {
     return (
       <Text size="sm" c="dimmed" truncate style={{ userSelect: "text" }}>
@@ -71,6 +85,14 @@ export function MxdCell({
   );
 }
 
+function ChoiceBadge({ choice }: { choice: Choice }) {
+  return (
+    <Badge size="sm" variant="light" color={choice.color ?? "gray"} radius="sm">
+      {choice.label}
+    </Badge>
+  );
+}
+
 function MxdCellDisplay({
   field,
   value,
@@ -82,11 +104,45 @@ function MxdCellDisplay({
 }) {
   const meta = fieldTypeMeta(field.type);
 
+  if (meta.input === "select") {
+    const c = choiceById(field).get(value as string);
+    return (
+      <div onClick={onStartEdit} style={{ cursor: "pointer", minHeight: 20 }}>
+        {c ? <ChoiceBadge choice={c} /> : <EmptyDash />}
+      </div>
+    );
+  }
+
+  if (meta.input === "multiSelect") {
+    const byId = choiceById(field);
+    const ids = Array.isArray(value) ? (value as string[]) : [];
+    return (
+      <Group
+        gap={4}
+        wrap="wrap"
+        onClick={onStartEdit}
+        style={{ cursor: "pointer", minHeight: 20 }}
+      >
+        {ids.length === 0 && <EmptyDash />}
+        {ids.map((id) => {
+          const c = byId.get(id);
+          return c ? <ChoiceBadge key={id} choice={c} /> : null;
+        })}
+      </Group>
+    );
+  }
+
   const text = renderCellText(value);
   if ((meta.input === "url" || meta.input === "email") && text) {
     const href = meta.input === "email" ? `mailto:${text}` : text;
     return (
-      <Anchor href={href} target="_blank" size="sm" truncate onClick={(e) => e.stopPropagation()}>
+      <Anchor
+        href={href}
+        target="_blank"
+        size="sm"
+        truncate
+        onClick={(e) => e.stopPropagation()}
+      >
         {text}
       </Anchor>
     );
@@ -99,9 +155,13 @@ function MxdCellDisplay({
       onClick={onStartEdit}
       style={{ cursor: "text", minHeight: 20, width: "100%" }}
     >
-      {text || <span style={{ color: "var(--mantine-color-dimmed)" }}>—</span>}
+      {text || <EmptyDash />}
     </Text>
   );
+}
+
+function EmptyDash() {
+  return <span style={{ color: "var(--mantine-color-dimmed)" }}>—</span>;
 }
 
 function MxdCellEditor({
@@ -118,7 +178,7 @@ function MxdCellEditor({
   const meta = fieldTypeMeta(field.type);
 
   if (meta.input === "select") {
-    const options: { id: string; label?: string }[] = field.config?.options ?? [];
+    const data = getChoices(field).map((c) => ({ value: c.id, label: c.label }));
     return (
       <Select
         size="xs"
@@ -126,12 +186,16 @@ function MxdCellEditor({
         searchable
         clearable
         defaultValue={typeof value === "string" ? value : null}
-        data={options.map((o) => ({ value: o.id, label: o.label ?? o.id }))}
+        data={data}
         onChange={(v) => onCommit(v ?? null)}
         onBlur={onCancel}
         comboboxProps={{ withinPortal: true }}
       />
     );
+  }
+
+  if (meta.input === "multiSelect") {
+    return <MultiSelectEditor field={field} value={value} onCommit={onCommit} />;
   }
 
   // date / datetime via native inputs — reliable YYYY-MM-DD / ISO serialization
@@ -171,6 +235,35 @@ function MxdCellEditor({
         if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         if (e.key === "Escape") onCancel();
       }}
+    />
+  );
+}
+
+function MultiSelectEditor({
+  field,
+  value,
+  onCommit,
+}: {
+  field: MxdField;
+  value: unknown;
+  onCommit: (v: unknown) => void;
+}) {
+  const [selected, setSelected] = useState<string[]>(
+    Array.isArray(value) ? (value as string[]) : [],
+  );
+  const data = getChoices(field).map((c) => ({ value: c.id, label: c.label }));
+  return (
+    <MultiSelect
+      size="xs"
+      autoFocus
+      searchable
+      clearable
+      data={data}
+      value={selected}
+      onChange={setSelected}
+      onBlur={() => onCommit(selected)}
+      onDropdownClose={() => onCommit(selected)}
+      comboboxProps={{ withinPortal: true }}
     />
   );
 }

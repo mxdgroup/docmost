@@ -47,6 +47,7 @@ import {
   mxdUpdateRecord,
 } from "@/features/mxd-data/mxd-data.api.ts";
 import { MxdCell } from "@/features/mxd-data/components/mxd-cell.tsx";
+import { MxdFieldSettingsModal } from "@/features/mxd-data/components/mxd-field-settings-modal.tsx";
 import { MxdAddColumnModal } from "@/features/mxd-data/components/mxd-add-column-modal.tsx";
 import { MxdImportCsvModal } from "@/features/mxd-data/components/mxd-import-csv-modal.tsx";
 import { MxdHistoryModal } from "@/features/mxd-data/components/mxd-history-modal.tsx";
@@ -67,6 +68,7 @@ export default function MxdTableView(props: NodeViewProps) {
   const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [historyRecordId, setHistoryRecordId] = useState<string | null>(null);
+  const [settingsField, setSettingsField] = useState<MxdField | null>(null);
   const searching = search.trim().length > 0;
 
   const fieldsQuery = useQuery<MxdField[]>({
@@ -383,6 +385,7 @@ export default function MxdTableView(props: NodeViewProps) {
           onDuplicate={duplicateRow}
           onDelete={deleteRow}
           onHistory={(r) => setHistoryRecordId(r.id)}
+          onEditField={setSettingsField}
         />
       ) : activeView?.type === "board" ? (
         <BoardView {...rendererProps} view={activeView} />
@@ -396,6 +399,7 @@ export default function MxdTableView(props: NodeViewProps) {
           onDuplicate={duplicateRow}
           onDelete={deleteRow}
           onHistory={(r) => setHistoryRecordId(r.id)}
+          onEditField={setSettingsField}
         />
       )}
 
@@ -433,6 +437,11 @@ export default function MxdTableView(props: NodeViewProps) {
         fields={fields}
         onClose={() => setHistoryRecordId(null)}
       />
+      <MxdFieldSettingsModal
+        tableId={tableId}
+        field={settingsField}
+        onClose={() => setSettingsField(null)}
+      />
     </NodeViewWrapper>
   );
 }
@@ -448,6 +457,7 @@ interface GridProps extends RendererProps {
   onDuplicate: (record: MxdRecord) => void;
   onDelete: (record: MxdRecord) => void;
   onHistory: (record: MxdRecord) => void;
+  onEditField: (field: MxdField) => void;
 }
 
 function GridView({
@@ -458,6 +468,7 @@ function GridView({
   onDuplicate,
   onDelete,
   onHistory,
+  onEditField,
 }: GridProps) {
   // A single cell coordinate is in edit mode at a time.
   const [editing, setEditing] = useState<{
@@ -482,7 +493,24 @@ function GridView({
           <Table.Thead>
             <Table.Tr>
               {fields.map((f) => (
-                <Table.Th key={f.id}>{f.name}</Table.Th>
+                <Table.Th key={f.id}>
+                  {editable ? (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onEditField(f)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") onEditField(f);
+                      }}
+                      title="Field settings"
+                      style={{ cursor: "pointer", display: "inline-block", width: "100%" }}
+                    >
+                      {f.name}
+                    </span>
+                  ) : (
+                    f.name
+                  )}
+                </Table.Th>
               ))}
               {editable && <Table.Th w={104} />}
             </Table.Tr>
