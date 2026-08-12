@@ -5,6 +5,8 @@ import {
   MxdFormController,
   MxdPublicFormController,
 } from './mxd-form.controller';
+import { MxdPublicDataController } from './mxd-public-data.controller';
+import { MxdPublicDataService } from './services/mxd-public-data.service';
 import { MxdTableService } from './services/mxd-table.service';
 import { MxdFieldService } from './services/mxd-field.service';
 import { MxdRecordService } from './services/mxd-record.service';
@@ -24,7 +26,12 @@ import { MxdAccessService } from './mxd-access.service';
 // by MxdAccessService for authz) are all provided by global modules.
 @Module({
   imports: [MxdDataRepoModule],
-  controllers: [MxdDataController, MxdFormController, MxdPublicFormController],
+  controllers: [
+    MxdDataController,
+    MxdFormController,
+    MxdPublicFormController,
+    MxdPublicDataController,
+  ],
   providers: [
     MxdTableService,
     MxdFieldService,
@@ -37,6 +44,7 @@ import { MxdAccessService } from './mxd-access.service';
     MxdAutomationService,
     MxdCsvService,
     MxdFormService,
+    MxdPublicDataService,
     MxdAccessService,
     MxdDataPlatformGuard,
   ],

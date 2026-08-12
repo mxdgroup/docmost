@@ -44,6 +44,9 @@ import {
   mxdExportCsv,
   mxdListFields,
   mxdListViews,
+  mxdPublicListFields,
+  mxdPublicListViews,
+  mxdPublicQueryRecords,
   mxdQueryRecords,
   mxdRunButton,
   mxdSearchRecords,
@@ -71,7 +74,14 @@ import { MxdHistoryModal } from "@/features/mxd-data/components/mxd-history-moda
 // a non-empty search box switches the source to records/search.
 export default function MxdTableView(props: NodeViewProps) {
   const tableId: string | null = props.node.attrs.tableId ?? null;
-  const editable = props.editor.isEditable;
+  // On a public share (/share/<key>/...) the embedded table reads through the
+  // anonymous public endpoints and is strictly read-only — no auth, no edits.
+  const shareKey =
+    typeof window !== "undefined"
+      ? window.location.pathname.match(/^\/share\/([^/]+)\//)?.[1] ?? null
+      : null;
+  const onShare = !!shareKey;
+  const editable = props.editor.isEditable && !onShare;
   const queryClient = useQueryClient();
   const [activeViewId, setActiveViewId] = useState<string | null>(
     props.node.attrs.viewId ?? null,
@@ -89,13 +99,19 @@ export default function MxdTableView(props: NodeViewProps) {
   const searching = search.trim().length > 0;
 
   const fieldsQuery = useQuery<MxdField[]>({
-    queryKey: ["mxd-fields", tableId],
-    queryFn: () => mxdListFields(tableId as string),
+    queryKey: ["mxd-fields", tableId, shareKey],
+    queryFn: () =>
+      onShare
+        ? mxdPublicListFields(shareKey as string, tableId as string)
+        : mxdListFields(tableId as string),
     enabled: !!tableId,
   });
   const viewsQuery = useQuery<MxdView[]>({
-    queryKey: ["mxd-views", tableId],
-    queryFn: () => mxdListViews(tableId as string),
+    queryKey: ["mxd-views", tableId, shareKey],
+    queryFn: () =>
+      onShare
+        ? mxdPublicListViews(shareKey as string, tableId as string)
+        : mxdListViews(tableId as string),
     enabled: !!tableId,
   });
 
@@ -104,13 +120,20 @@ export default function MxdTableView(props: NodeViewProps) {
     views.find((v) => v.id === activeViewId) ?? views[0] ?? null;
 
   const recordsQuery = useQuery({
-    queryKey: ["mxd-records", tableId, activeView?.id],
+    queryKey: ["mxd-records", tableId, activeView?.id, shareKey],
     queryFn: () =>
-      mxdQueryRecords({
-        tableId: tableId as string,
-        viewId: activeView?.id,
-        limit: 200,
-      }),
+      onShare
+        ? mxdPublicQueryRecords({
+            shareKey: shareKey as string,
+            tableId: tableId as string,
+            viewId: activeView?.id,
+            limit: 200,
+          })
+        : mxdQueryRecords({
+            tableId: tableId as string,
+            viewId: activeView?.id,
+            limit: 200,
+          }),
     enabled: !!tableId && !!activeView,
   });
 
@@ -118,7 +141,7 @@ export default function MxdTableView(props: NodeViewProps) {
     queryKey: ["mxd-search", tableId, search.trim()],
     queryFn: () =>
       mxdSearchRecords({ tableId: tableId as string, query: search.trim() }),
-    enabled: !!tableId && searching,
+    enabled: !!tableId && searching && !onShare,
   });
 
   const refresh = () =>
@@ -379,26 +402,28 @@ export default function MxdTableView(props: NodeViewProps) {
         </Group>
 
         <Group gap="xs" wrap="nowrap">
-          <TextInput
-            size="xs"
-            placeholder="Search…"
-            leftSection={<IconSearch size={14} />}
-            rightSection={
-              search ? (
-                <ActionIcon
-                  size="xs"
-                  variant="subtle"
-                  onClick={() => setSearch("")}
-                  aria-label="Clear search"
-                >
-                  <IconX size={12} />
-                </ActionIcon>
-              ) : null
-            }
-            value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)}
-            w={180}
-          />
+          {!onShare && (
+            <TextInput
+              size="xs"
+              placeholder="Search…"
+              leftSection={<IconSearch size={14} />}
+              rightSection={
+                search ? (
+                  <ActionIcon
+                    size="xs"
+                    variant="subtle"
+                    onClick={() => setSearch("")}
+                    aria-label="Clear search"
+                  >
+                    <IconX size={12} />
+                  </ActionIcon>
+                ) : null
+              }
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+              w={180}
+            />
+          )}
           {editable && (
             <>
               <ActionIcon

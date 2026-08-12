@@ -335,6 +335,31 @@ export const mxdDeleteForm = (input: {
 }): Promise<{ success: boolean }> =>
   api.post("/mxd/forms/delete", input).then((r) => r.data);
 
+// ---- public (anonymous) embedded-table reads on a share
+export const mxdPublicGetTable = (
+  shareKey: string,
+  tableId: string,
+): Promise<MxdTable> =>
+  api.post("/mxd/public/data/table", { shareKey, tableId }).then((r) => r.data);
+export const mxdPublicListFields = (
+  shareKey: string,
+  tableId: string,
+): Promise<MxdField[]> =>
+  api.post("/mxd/public/data/fields", { shareKey, tableId }).then((r) => r.data);
+export const mxdPublicListViews = (
+  shareKey: string,
+  tableId: string,
+): Promise<MxdView[]> =>
+  api.post("/mxd/public/data/views", { shareKey, tableId }).then((r) => r.data);
+export const mxdPublicQueryRecords = (input: {
+  shareKey: string;
+  tableId: string;
+  viewId?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<MxdRecordPage> =>
+  api.post("/mxd/public/data/records", input).then((r) => r.data);
+
 // public (anonymous)
 export interface MxdPublicFormField {
   id: string;

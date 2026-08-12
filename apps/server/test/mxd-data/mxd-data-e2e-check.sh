@@ -170,6 +170,25 @@ check "$(post mxd/records/search '{"tableId":"'$TID'","query":"FormSubmitted"}' 
 check "$(code mxd/public/forms/submit '{"key":"'$FKEY'","values":{"'$DBL'":1}}')" "400" "public submit rejects a field not on the form"
 check "$(code mxd/public/forms/get '{"key":"nonexistent-key"}')" "404" "unknown form key -> 404"
 
+# --- public embedded-table reads on a share (anonymous, read-only)
+# Share the E2E page, then hit the /mxd/public/data/* endpoints with NO cookie
+# (anon) — they must resolve the table via the share and return read-only data.
+SH=$(post shares/create '{"pageId":"'$PAGE'","mode":"view"}')
+SKEY=$(echo "$SH" | jd "d['key']")
+check "$(echo "$SH" | jd "1 if d.get('key') else 0")" "1" "share created with a public key"
+anon() { curl -s -m 10 -X POST "$B/$1" -H 'Content-Type: application/json' -d "$2"; }
+anoncode() { curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST "$B/$1" -H 'Content-Type: application/json' -d "$2"; }
+check "$(anon mxd/public/data/table '{"shareKey":"'$SKEY'","tableId":"'$TID'"}' | jd "d['id']")" "$TID" "anon reads the shared table by key (no auth)"
+check "$(anon mxd/public/data/fields '{"shareKey":"'$SKEY'","tableId":"'$TID'"}' | jd "1 if any(f['id']=='$PRIM' for f in d) else 0")" "1" "anon lists the table fields"
+check "$(anon mxd/public/data/records '{"shareKey":"'$SKEY'","tableId":"'$TID'","limit":200}' | jd "1 if d['total']>=3 else 0")" "1" "anon queries the table records"
+# A table on a DIFFERENT, unshared page must 404 through this share (scope
+# enforcement — the anon reader can't reach tables outside the share's subtree).
+OP=$(post pages/create '{"spaceId":"'$SPACE'","title":"Other page"}' | jd "d['id']")
+OTID=$(post mxd/tables/create '{"pageId":"'$OP'","title":"Offscope"}' | jd "d['id']")
+check "$(anoncode mxd/public/data/table '{"shareKey":"'$SKEY'","tableId":"'$OTID'"}')" "404" "anon read of a table outside the share scope -> 404"
+check "$(anoncode mxd/public/data/table '{"shareKey":"'$SKEY'","tableId":"00000000-0000-0000-0000-000000000000"}')" "404" "anon read of an unknown table -> 404"
+check "$(anoncode mxd/public/data/table '{"shareKey":"nope-nope","tableId":"'$TID'"}')" "404" "anon read with an unknown share key -> 404"
+
 rm -f "$CJ"
 echo ""; echo "E2E: $pass passed, $fail failed"
 exit $fail
