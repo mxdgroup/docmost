@@ -3,6 +3,7 @@ import { Select, Stack, Text, Textarea } from "@mantine/core";
 import { MxdField } from "../mxd-data.api";
 import { fieldTypeMeta } from "../mxd-field-types";
 import { useMxdFields } from "../queries/mxd-data-query";
+import { MxdActionBuilder, MxdAction } from "./mxd-action-builder";
 
 interface Props {
   tableId: string;
@@ -127,6 +128,17 @@ export function MxdFieldConfigEditor({ tableId, type, config, onChange }: Props)
     );
   }
 
+  if (type === "button") {
+    return (
+      <MxdActionBuilder
+        tableId={tableId}
+        actions={(config.actions as MxdAction[]) ?? []}
+        onChange={(actions) => onChange({ ...config, actions })}
+        allowOpenUrl
+      />
+    );
+  }
+
   return (
     <Text size="xs" c="dimmed">
       This field type has no extra settings.
@@ -134,7 +146,7 @@ export function MxdFieldConfigEditor({ tableId, type, config, onChange }: Props)
   );
 }
 
-// Whether a computed config is complete enough to save.
+// Whether a computed/config field's config is complete enough to save.
 export function isComputedConfigValid(
   type: string,
   config: Record<string, any>,
@@ -142,5 +154,6 @@ export function isComputedConfigValid(
   if (type === "formula") return !!(config.expression ?? "").trim();
   if (type === "lookup" || type === "rollup")
     return !!config.viaFieldId && !!config.targetFieldId;
+  if (type === "button") return ((config.actions as any[]) ?? []).length > 0;
   return true;
 }

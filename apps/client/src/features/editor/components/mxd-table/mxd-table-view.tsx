@@ -18,6 +18,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import {
+  IconBolt,
   IconCopy,
   IconDots,
   IconDownload,
@@ -43,6 +44,7 @@ import {
   mxdListFields,
   mxdListViews,
   mxdQueryRecords,
+  mxdRunButton,
   mxdSearchRecords,
   mxdUpdateRecord,
 } from "@/features/mxd-data/mxd-data.api.ts";
@@ -53,6 +55,7 @@ import {
   RelationTarget,
 } from "@/features/mxd-data/components/mxd-relation-picker-modal.tsx";
 import { MxdFieldSettingsModal } from "@/features/mxd-data/components/mxd-field-settings-modal.tsx";
+import { MxdAutomationsModal } from "@/features/mxd-data/components/mxd-automations-modal.tsx";
 import { fieldTypeMeta } from "@/features/mxd-data/mxd-field-types.ts";
 import { MxdAddColumnModal } from "@/features/mxd-data/components/mxd-add-column-modal.tsx";
 import { MxdImportCsvModal } from "@/features/mxd-data/components/mxd-import-csv-modal.tsx";
@@ -78,6 +81,7 @@ export default function MxdTableView(props: NodeViewProps) {
   const [relationTarget, setRelationTarget] = useState<RelationTarget | null>(
     null,
   );
+  const [automationsOpen, setAutomationsOpen] = useState(false);
   const searching = search.trim().length > 0;
 
   const fieldsQuery = useQuery<MxdField[]>({
@@ -199,6 +203,27 @@ export default function MxdTableView(props: NodeViewProps) {
             : (err?.response?.data?.message ?? "Could not delete the row"),
       });
       refresh();
+    }
+  };
+
+  const runButton = async (field: MxdField, record: MxdRecord) => {
+    try {
+      const res = await mxdRunButton({
+        tableId: tableId as string,
+        fieldId: field.id,
+        recordId: record.id,
+      });
+      refresh();
+      for (const d of res.directives ?? []) {
+        if (d.type === "openUrl" && typeof d.url === "string") {
+          window.open(d.url, "_blank", "noopener,noreferrer");
+        }
+      }
+    } catch (err: any) {
+      notifications.show({
+        color: "red",
+        message: err?.response?.data?.message ?? "Button action failed",
+      });
     }
   };
 
@@ -377,6 +402,13 @@ export default function MxdTableView(props: NodeViewProps) {
                   >
                     Import CSV
                   </Menu.Item>
+                  <Menu.Divider />
+                  <Menu.Item
+                    leftSection={<IconBolt size={14} />}
+                    onClick={() => setAutomationsOpen(true)}
+                  >
+                    Automations…
+                  </Menu.Item>
                 </Menu.Dropdown>
               </Menu>
             </>
@@ -397,6 +429,7 @@ export default function MxdTableView(props: NodeViewProps) {
           onHistory={(r) => setHistoryRecordId(r.id)}
           onEditField={setSettingsField}
           onOpenRelation={setRelationTarget}
+          onRunButton={runButton}
         />
       ) : activeView?.type === "board" ? (
         <BoardView {...rendererProps} view={activeView} />
@@ -413,6 +446,7 @@ export default function MxdTableView(props: NodeViewProps) {
           onHistory={(r) => setHistoryRecordId(r.id)}
           onEditField={setSettingsField}
           onOpenRelation={setRelationTarget}
+          onRunButton={runButton}
         />
       )}
 
@@ -460,6 +494,11 @@ export default function MxdTableView(props: NodeViewProps) {
         target={relationTarget}
         onClose={() => setRelationTarget(null)}
       />
+      <MxdAutomationsModal
+        tableId={tableId}
+        opened={automationsOpen}
+        onClose={() => setAutomationsOpen(false)}
+      />
     </NodeViewWrapper>
   );
 }
@@ -478,6 +517,7 @@ interface GridProps extends RendererProps {
   onHistory: (record: MxdRecord) => void;
   onEditField: (field: MxdField) => void;
   onOpenRelation: (target: RelationTarget) => void;
+  onRunButton: (field: MxdField, record: MxdRecord) => void;
 }
 
 function GridView({
@@ -491,6 +531,7 @@ function GridView({
   onHistory,
   onEditField,
   onOpenRelation,
+  onRunButton,
 }: GridProps) {
   // A single cell coordinate is in edit mode at a time.
   const [editing, setEditing] = useState<{
@@ -552,6 +593,17 @@ function GridView({
                           onOpenRelation({ field: f, record })
                         }
                       />
+                    </Table.Td>
+                  ) : fieldTypeMeta(f.type).button ? (
+                    <Table.Td key={f.id}>
+                      <Button
+                        size="compact-xs"
+                        variant="light"
+                        disabled={!editable}
+                        onClick={() => onRunButton(f, record)}
+                      >
+                        {f.name}
+                      </Button>
                     </Table.Td>
                   ) : (
                     <Table.Td key={f.id}>

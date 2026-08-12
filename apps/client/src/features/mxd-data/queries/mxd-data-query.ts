@@ -14,11 +14,16 @@ import {
   MxdView,
   MxdHistoryEntry,
   mxdAddField,
+  MxdAutomationRule,
+  mxdCreateAutomation,
+  mxdDeleteAutomation,
   mxdLinkRelation,
+  mxdListAutomations,
   mxdListRecords,
   mxdListRelated,
   mxdListTables,
   mxdUnlinkRelation,
+  mxdUpdateAutomation,
   mxdChangeFieldType,
   mxdCreateRecord,
   mxdCreateView,
@@ -307,6 +312,52 @@ export function useMxdRecordsList(
     queryFn: () => mxdListRecords(tableId, { limit: 200 }),
     enabled: enabled && !!tableId,
   });
+}
+
+// ---- automations
+export function useMxdAutomations(
+  tableId: string,
+  enabled = true,
+): UseQueryResult<MxdAutomationRule[]> {
+  return useQuery({
+    queryKey: ["mxd-automations", tableId],
+    queryFn: () => mxdListAutomations(tableId),
+    enabled: enabled && !!tableId,
+  });
+}
+
+export function useMxdAutomationMutations(tableId: string) {
+  const qc = useQueryClient();
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: ["mxd-automations", tableId] });
+
+  const create = useMutation({
+    mutationFn: (input: {
+      name?: string;
+      trigger: Record<string, any>;
+      actions: Record<string, any>[];
+      enabled?: boolean;
+    }) => mxdCreateAutomation({ tableId, ...input }),
+    onSuccess: invalidate,
+    onError: (e) => notifyError(e, "Could not create the automation"),
+  });
+  const update = useMutation({
+    mutationFn: (input: {
+      ruleId: string;
+      name?: string;
+      trigger?: Record<string, any>;
+      actions?: Record<string, any>[];
+      enabled?: boolean;
+    }) => mxdUpdateAutomation({ tableId, ...input }),
+    onSuccess: invalidate,
+    onError: (e) => notifyError(e, "Could not update the automation"),
+  });
+  const remove = useMutation({
+    mutationFn: (ruleId: string) => mxdDeleteAutomation({ tableId, ruleId }),
+    onSuccess: invalidate,
+    onError: (e) => notifyError(e, "Could not delete the automation"),
+  });
+  return { create, update, remove };
 }
 
 export function useMxdRelationMutations(tableId: string) {

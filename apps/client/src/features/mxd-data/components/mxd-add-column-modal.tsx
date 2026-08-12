@@ -23,6 +23,7 @@ const COMPUTED_TYPES = [
   { value: "formula", label: "Formula" },
   { value: "lookup", label: "Lookup" },
   { value: "rollup", label: "Rollup" },
+  { value: "button", label: "Button" },
 ];
 const isComputed = (t: string) =>
   COMPUTED_TYPES.some((c) => c.value === t);

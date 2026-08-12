@@ -30,7 +30,7 @@ interface Choice {
 }
 
 const isComputedType = (t: string) =>
-  t === "formula" || t === "lookup" || t === "rollup";
+  t === "formula" || t === "lookup" || t === "rollup" || t === "button";
 
 interface Props {
   tableId: string;
