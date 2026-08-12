@@ -56,6 +56,7 @@ import {
 } from "@/features/mxd-data/components/mxd-relation-picker-modal.tsx";
 import { MxdFieldSettingsModal } from "@/features/mxd-data/components/mxd-field-settings-modal.tsx";
 import { MxdAutomationsModal } from "@/features/mxd-data/components/mxd-automations-modal.tsx";
+import { MxdCalendarView } from "@/features/mxd-data/components/mxd-calendar-view.tsx";
 import { fieldTypeMeta } from "@/features/mxd-data/mxd-field-types.ts";
 import { MxdAddColumnModal } from "@/features/mxd-data/components/mxd-add-column-modal.tsx";
 import { MxdImportCsvModal } from "@/features/mxd-data/components/mxd-import-csv-modal.tsx";
@@ -246,11 +247,33 @@ export default function MxdTableView(props: NodeViewProps) {
   };
 
   const addView = async (type: string) => {
+    // Some view types require config the server validates on create: a calendar
+    // needs a date field; a board groups nicely by a select field. Pick sensible
+    // defaults from the table's fields so the view works out of the box.
+    const currentFields = fieldsQuery.data ?? [];
+    let config: Record<string, unknown> | undefined;
+    if (type === "calendar") {
+      const dateField = currentFields.find(
+        (f) => f.type === "date" || f.type === "datetime",
+      );
+      if (!dateField) {
+        notifications.show({
+          color: "yellow",
+          message: "Add a date field before creating a calendar view.",
+        });
+        return;
+      }
+      config = { displayFieldId: dateField.id };
+    } else if (type === "board") {
+      const selectField = currentFields.find((f) => f.type === "select");
+      if (selectField) config = { groupByFieldId: selectField.id };
+    }
     try {
       const view = await mxdCreateView({
         tableId: tableId as string,
         name: type[0].toUpperCase() + type.slice(1),
         type,
+        config,
       });
       await queryClient.invalidateQueries({ queryKey: ["mxd-views", tableId] });
       setActiveViewId(view.id);
@@ -345,6 +368,7 @@ export default function MxdTableView(props: NodeViewProps) {
                 <Menu.Item onClick={() => addView("grid")}>Grid</Menu.Item>
                 <Menu.Item onClick={() => addView("list")}>List</Menu.Item>
                 <Menu.Item onClick={() => addView("board")}>Board</Menu.Item>
+                <Menu.Item onClick={() => addView("calendar")}>Calendar</Menu.Item>
                 <Menu.Item onClick={() => addView("gallery")}>Gallery</Menu.Item>
               </Menu.Dropdown>
             </Menu>
@@ -433,6 +457,12 @@ export default function MxdTableView(props: NodeViewProps) {
         />
       ) : activeView?.type === "board" ? (
         <BoardView {...rendererProps} view={activeView} />
+      ) : activeView?.type === "calendar" ? (
+        <MxdCalendarView
+          fields={fields}
+          records={records}
+          view={activeView}
+        />
       ) : activeView?.type === "gallery" ? (
         <GalleryView {...rendererProps} view={activeView} />
       ) : activeView?.type === "list" ? (
