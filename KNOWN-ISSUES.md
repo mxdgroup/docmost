@@ -2,7 +2,7 @@
 
 ## 1. Share mode (View/Comment/Edit) selector never renders — EE modal shadows our core one
 
-**Status:** OPEN. Server works; UI control missing. Workaround below.
+**Status:** ✅ FIXED in `v0.95.0-mxd.5` (2026-08-14) — see "Resolution" at the end. Kept for the history.
 **Found:** 2026-08-14 on production `v0.95.0-mxd.4`.
 
 ### Symptom
@@ -44,3 +44,22 @@ update shares set mode='edit' where key='<share-key>';   -- or 'comment' / 'view
 ```
 On the box: `cd /root/docmost && docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "..."'`
 Applied 2026-08-14 to share `kd1h73carq` (Daily standup tree) so it is editable via its public link.
+
+
+### Resolution (v0.95.0-mxd.5, deployed 2026-08-14)
+
+Implemented **option 1**: a fork-owned, AGPL-core control rather than touching EE.
+
+- New `apps/client/src/features/share/components/mxd-share-access-modal.tsx` — a
+  **Public link access** modal with the View/Comment/Edit `SegmentedControl`, driving the same
+  core share API the EE dialog uses (`useShareForPageQuery` + `useUpdateShareMutation`).
+- Opened from a **"Public link access"** item in the page action menu
+  (`apps/client/src/features/page/components/header/page-header-menu.tsx`), shown only when
+  `SHARE_EDIT_ENABLED` or `SHARE_GUEST_COMMENTS_ENABLED` is on; options gated per flag.
+- The **inherited-share** case (the second reason this looked broken) is handled explicitly: a
+  child page shows an explanation and a disabled control, since mode belongs to the share and must
+  be set on the owning page.
+- `ee-clean-room` stays green — only core files touched.
+
+Verified in production: the menu item appears, the modal opens, and it correctly reflects
+`Can edit` for the Daily standup share. The SQL workaround above is no longer needed.
