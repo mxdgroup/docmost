@@ -222,9 +222,14 @@ export class MxdRecordRepo {
       .execute();
   }
 
-  // Direct data replace (no version bump) for schema-level operations like type
-  // conversion, where the whole column is being rewritten under an editor's
-  // control rather than a concurrent record edit.
+  // Direct data replace for schema-level operations like type conversion, where
+  // the whole column is rewritten under an editor's control. It BUMPS version:
+  // although the rows are locked FOR UPDATE during the conversion transaction, a
+  // concurrent updateRecord reads its `current` snapshot under READ COMMITTED
+  // BEFORE the lock and then writes WHERE version = expected. Without the bump
+  // that stale write's version still matches and it silently restores the
+  // pre-conversion values for every field it didn't touch. Bumping version
+  // forces that racing write into the 409-conflict path instead (review P1).
   async replaceData(
     workspaceId: string,
     tableId: string,
@@ -234,7 +239,11 @@ export class MxdRecordRepo {
   ): Promise<void> {
     await dbOrTx(this.db, trx)
       .updateTable('mxdRecords')
-      .set({ data: data as any, updatedAt: new Date() })
+      .set((eb) => ({
+        data: data as any,
+        version: sql`${eb.ref('version')} + 1`,
+        updatedAt: new Date(),
+      }))
       .where('id', '=', recordId)
       .where('tableId', '=', tableId)
       .where('workspaceId', '=', workspaceId)
