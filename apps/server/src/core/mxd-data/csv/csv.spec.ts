@@ -60,4 +60,35 @@ describe('renderCsvCell', () => {
     expect(renderCsvCell(['a', 'b'])).toBe('["a","b"]');
     expect(renderCsvCell({ error: 'x' })).toBe('{"error":"x"}');
   });
+
+  // CSV formula injection (CWE-1236 / OWASP CSV Injection): a string cell
+  // whose first character would be interpreted by Excel/Sheets/LibreOffice
+  // as a formula prefix must be neutralized with a leading apostrophe.
+  it('prefixes an apostrophe on values that could be read as spreadsheet formulas', () => {
+    expect(renderCsvCell('=1+1')).toBe("'=1+1");
+    expect(renderCsvCell('+1')).toBe("'+1");
+    expect(renderCsvCell('-1')).toBe("'-1");
+    expect(renderCsvCell('@SUM(A1:A2)')).toBe("'@SUM(A1:A2)");
+    expect(renderCsvCell('\tfoo')).toBe("'\tfoo");
+    expect(renderCsvCell('\rfoo')).toBe("'\rfoo");
+  });
+
+  it('does not prefix normal text or numeric-looking strings', () => {
+    expect(renderCsvCell('hello')).toBe('hello');
+    expect(renderCsvCell('42')).toBe('42');
+  });
+
+  it('does not prefix a value that merely contains a trigger character mid-string', () => {
+    expect(renderCsvCell('a=b')).toBe('a=b');
+  });
+
+  it('does not double-apply the prefix', () => {
+    expect(renderCsvCell(renderCsvCell('=1+1'))).toBe("'=1+1");
+  });
+
+  it('exports a neutralized formula value through serializeCsv, quoted as needed', () => {
+    const csv = serializeCsv([[renderCsvCell('=1+1')]]);
+    expect(csv).toBe("'=1+1\n");
+    expect(parseCsv(csv)).toEqual([["'=1+1"]]);
+  });
 });

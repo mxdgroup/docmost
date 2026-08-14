@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useDebouncedValue } from "@mantine/hooks";
 import { NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import {
   ActionIcon,
@@ -74,13 +75,28 @@ import { MxdHistoryModal } from "@/features/mxd-data/components/mxd-history-moda
 // a non-empty search box switches the source to records/search.
 export default function MxdTableView(props: NodeViewProps) {
   const tableId: string | null = props.node.attrs.tableId ?? null;
-  // On a public share (/share/<key>/...) the embedded table reads through the
-  // anonymous public endpoints and is strictly read-only — no auth, no edits.
-  const shareKey =
+  // On a public share the embedded table reads through the anonymous public
+  // endpoints and is strictly read-only — no auth, no edits. There are two
+  // share route shapes (see apps/client/src/App.tsx and
+  // page.utils.ts#buildSharedPageUrl):
+  //   /share/:shareId/p/:pageSlug  → shareKey = :shareId
+  //   /share/p/:pageSlug           → no shareId in the URL at all
+  // A greedy `([^/]+)` capture on the first segment after /share/ mistakes
+  // the literal "p" in the second route for a shareId, so the two shapes are
+  // matched explicitly instead. On the keyless form we still treat the page
+  // as a share context (read-only, no authenticated calls) but shareKey
+  // stays null — the embedded table simply has no key to resolve by.
+  const shareRouteMatch =
     typeof window !== "undefined"
-      ? window.location.pathname.match(/^\/share\/([^/]+)\//)?.[1] ?? null
+      ? window.location.pathname.match(
+          /^\/share\/(?:([^/]+)\/p\/[^/]+|p\/[^/]+)\/?$/,
+        )
       : null;
-  const onShare = !!shareKey;
+  const onShare = !!shareRouteMatch;
+  const shareKey =
+    shareRouteMatch && shareRouteMatch[1] && shareRouteMatch[1] !== "p"
+      ? shareRouteMatch[1]
+      : null;
   const editable = props.editor.isEditable && !onShare;
   const queryClient = useQueryClient();
   const [activeViewId, setActiveViewId] = useState<string | null>(
@@ -96,7 +112,17 @@ export default function MxdTableView(props: NodeViewProps) {
   );
   const [automationsOpen, setAutomationsOpen] = useState(false);
   const [formsOpen, setFormsOpen] = useState(false);
-  const searching = search.trim().length > 0;
+  // Debounce the search box so rapid typing coalesces into one server call —
+  // each search is a full-table scan server-side. The TextInput itself stays
+  // bound to the raw `search` value for a responsive feel; the query key/fn
+  // (and the "searching" flag driving which data source/branch renders)
+  // consume the debounced value so they only settle once typing pauses.
+  const [debouncedSearch] = useDebouncedValue(search, 300);
+  const searching = debouncedSearch.trim().length > 0;
+  // On the keyless share form (/share/p/:pageSlug) there is no shareId to
+  // resolve the public endpoints by, and we must not fall back to the
+  // authenticated ones either — so queries simply stay disabled in that case.
+  const canQueryShare = !onShare || !!shareKey;
 
   const fieldsQuery = useQuery<MxdField[]>({
     queryKey: ["mxd-fields", tableId, shareKey],
@@ -104,7 +130,7 @@ export default function MxdTableView(props: NodeViewProps) {
       onShare
         ? mxdPublicListFields(shareKey as string, tableId as string)
         : mxdListFields(tableId as string),
-    enabled: !!tableId,
+    enabled: !!tableId && canQueryShare,
   });
   const viewsQuery = useQuery<MxdView[]>({
     queryKey: ["mxd-views", tableId, shareKey],
@@ -112,7 +138,7 @@ export default function MxdTableView(props: NodeViewProps) {
       onShare
         ? mxdPublicListViews(shareKey as string, tableId as string)
         : mxdListViews(tableId as string),
-    enabled: !!tableId,
+    enabled: !!tableId && canQueryShare,
   });
 
   const views = viewsQuery.data ?? [];
@@ -134,13 +160,16 @@ export default function MxdTableView(props: NodeViewProps) {
             viewId: activeView?.id,
             limit: 200,
           }),
-    enabled: !!tableId && !!activeView,
+    enabled: !!tableId && !!activeView && canQueryShare,
   });
 
   const searchQuery = useQuery({
-    queryKey: ["mxd-search", tableId, search.trim()],
+    queryKey: ["mxd-search", tableId, debouncedSearch.trim()],
     queryFn: () =>
-      mxdSearchRecords({ tableId: tableId as string, query: search.trim() }),
+      mxdSearchRecords({
+        tableId: tableId as string,
+        query: debouncedSearch.trim(),
+      }),
     enabled: !!tableId && searching && !onShare,
   });
 

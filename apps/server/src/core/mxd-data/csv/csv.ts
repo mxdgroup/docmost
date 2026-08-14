@@ -75,12 +75,29 @@ export function serializeCsv(rows: string[][]): string {
   return stringify(rows);
 }
 
+// Cell values starting with any of these characters are interpreted as
+// formulas by Excel/Sheets/LibreOffice on open (CSV formula injection,
+// CWE-1236 / OWASP CSV Injection). Anonymous form submissions can seed a
+// text field with such a value, so any string cell is checked before export.
+const FORMULA_TRIGGER_CHARS = new Set(['=', '+', '-', '@', '\t', '\r']);
+
+// Neutralize potential CSV formula injection by prefixing a leading
+// apostrophe, which forces spreadsheet apps to treat the value as literal
+// text instead of evaluating it as a formula. Applied before quote-escaping
+// so the apostrophe is preserved inside the quoted field on round-trip.
+function neutralizeCsvFormula(value: string): string {
+  if (value.length > 0 && FORMULA_TRIGGER_CHARS.has(value[0])) {
+    return `'${value}`;
+  }
+  return value;
+}
+
 // Render a stored/computed cell value to a CSV string. Scalars pass through;
 // arrays/objects (multi-select, computed error cells, etc.) are JSON-encoded so
 // the export stays lossless and unambiguous.
 export function renderCsvCell(value: unknown): string {
   if (value === null || value === undefined) return '';
-  if (typeof value === 'string') return value;
+  if (typeof value === 'string') return neutralizeCsvFormula(value);
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return JSON.stringify(value);
 }
