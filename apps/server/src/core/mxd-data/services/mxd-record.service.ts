@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { MxdTableRepo } from '@docmost/db/repos/mxd-data/mxd-table.repo';
@@ -19,6 +20,8 @@ import {
 } from '@docmost/db/types/entity.types';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  AutomationBudget,
+  MAX_AUTOMATION_WRITES,
   MxdContext,
   MXD_RECORD_CHANGED,
   MxdRecordChangedEvent,
@@ -46,6 +49,8 @@ const RECORD_LIST_DEFAULT = 50;
 
 @Injectable()
 export class MxdRecordService {
+  private readonly logger = new Logger(MxdRecordService.name);
+
   constructor(
     private readonly tableRepo: MxdTableRepo,
     private readonly fieldRepo: MxdFieldRepo,
@@ -85,7 +90,16 @@ export class MxdRecordService {
   }
 
   // Emit a change event (awaited) so automations run synchronously within the
-  // write. emitAsync resolves immediately when there are no listeners.
+  // write. Two hard guarantees live here:
+  //  1. FAILURE ISOLATION — the record row has already committed by the time we
+  //     emit, so an automation-listener failure must NEVER turn a successful
+  //     write into a 500 (which would make a client retry and duplicate the
+  //     row). We swallow+log any listener rejection; the executor is itself
+  //     isolated too (belt and suspenders).
+  //  2. FAN-OUT BUDGET — a root write (no budget on ctx yet) seeds a shared
+  //     AutomationBudget onto the event's ctx. It is threaded by reference to
+  //     every descendant write, so the whole cascade — across breadth AND depth
+  //     — can trigger at most MAX_AUTOMATION_WRITES automation writes total.
   private async emitChanged(
     ctx: MxdContext,
     tableId: string,
@@ -93,13 +107,27 @@ export class MxdRecordService {
     triggerType: 'record_created' | 'record_updated',
     changedFieldIds: string[],
   ): Promise<void> {
-    await this.eventEmitter.emitAsync(MXD_RECORD_CHANGED, {
-      ctx,
-      tableId,
-      recordId,
-      triggerType,
-      changedFieldIds,
-    } as MxdRecordChangedEvent);
+    const budget: AutomationBudget = ctx.automationBudget ?? {
+      remaining: MAX_AUTOMATION_WRITES,
+    };
+    const eventCtx: MxdContext = { ...ctx, automationBudget: budget };
+    try {
+      await this.eventEmitter.emitAsync(MXD_RECORD_CHANGED, {
+        ctx: eventCtx,
+        tableId,
+        recordId,
+        triggerType,
+        changedFieldIds,
+      } as MxdRecordChangedEvent);
+    } catch (err) {
+      // Automations are a side effect of an already-committed write. A failure
+      // in dispatch or in a listener must not propagate — log and move on.
+      this.logger.error(
+        `mxd automation dispatch failed for ${triggerType} ${tableId}/${recordId}: ${
+          (err as any)?.message ?? err
+        }`,
+      );
+    }
   }
 
   // Load the table scoped to the workspace, then authorize against the table's

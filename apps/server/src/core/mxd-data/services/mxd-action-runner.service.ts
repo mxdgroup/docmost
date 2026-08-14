@@ -45,6 +45,15 @@ export class MxdActionRunner {
     const directives: ActionRunResult['directives'] = [];
     const patch: Record<string, unknown> = {};
 
+    // DEFINED MULTI-ACTION SEMANTICS: cell mutations (setField/clearField/
+    // setNow) accumulate into ONE patch applied after the loop, so they commit
+    // together. createRecord actions apply in order and each commits as its own
+    // atomic row write; if a later action throws, earlier spawned rows remain
+    // and the caller records the rule as an error. This is the v1 contract —
+    // cell writes atomic, cross-record spawns best-effort in-order. (A full
+    // multi-record transaction is deferred; noted in MXD-FORK.md.)
+    const budget = ctx.automationBudget;
+
     for (const action of actions) {
       switch (action.type) {
         case 'setField':
@@ -62,6 +71,13 @@ export class MxdActionRunner {
           break;
         }
         case 'createRecord':
+          // Fan-out breadth guard: each spawned record spends one unit of the
+          // shared root-event budget. When it's exhausted the cascade stops
+          // spawning — this is what bounds N^depth amplification.
+          if (budget) {
+            if (budget.remaining <= 0) break;
+            budget.remaining -= 1;
+          }
           await this.recordService.createRecord(ctx, tableId, action.cells);
           break;
         case 'openUrl':
@@ -73,6 +89,12 @@ export class MxdActionRunner {
     }
 
     if (Object.keys(patch).length > 0) {
+      // A cell-patch update re-emits a change event and can re-trigger rules,
+      // so it also spends one budget unit — keeping total writes bounded.
+      if (budget) {
+        if (budget.remaining <= 0) return { directives };
+        budget.remaining -= 1;
+      }
       await this.recordService.updateRecord(
         ctx,
         tableId,

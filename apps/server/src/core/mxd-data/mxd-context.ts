@@ -18,7 +18,24 @@ export interface MxdContext {
   // 0/undefined; each automation-triggered write increments it. The executor
   // stops once it reaches the cap — the primary loop guard (roadmap §40).
   automationDepth?: number;
+  // Shared, mutable budget threaded BY REFERENCE through the whole automation
+  // cascade (childCtx spreads copy the reference). The depth guard alone bounds
+  // chain length but NOT branching: a rule with N create actions fans out to
+  // N^depth writes. This caps the TOTAL automation-triggered writes descending
+  // from a single root user write, so breadth is bounded too. Created lazily by
+  // the record service on the first change emission of a root write.
+  automationBudget?: AutomationBudget;
 }
+
+export interface AutomationBudget {
+  remaining: number;
+}
+
+// Ceiling on the total number of automation-triggered record writes descending
+// from one root user write. Bounds fan-out breadth (see AutomationBudget). Set
+// generous enough for real rule graphs, low enough that N^5 amplification can't
+// pin the process. Buttons/user writes are not counted — only automation writes.
+export const MAX_AUTOMATION_WRITES = 200;
 
 // Emitted by the record service after a create/update so the automation executor
 // (a decoupled @OnEvent listener) can react without a circular dependency.

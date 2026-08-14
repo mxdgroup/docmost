@@ -278,4 +278,53 @@ describe('MxdRecordService', () => {
       expect(historyRepo.listByRecord).toHaveBeenCalledWith('ws1', 't1', 'r1', 200);
     });
   });
+
+  describe('automation dispatch isolation (P1 regression)', () => {
+    // A committed write must never be turned into a failure by a downstream
+    // automation-listener error — otherwise the client retries and duplicates.
+    it('still resolves createRecord when the change listener rejects', async () => {
+      const { service, eventEmitter, recordRepo } = make();
+      eventEmitter.emitAsync.mockRejectedValueOnce(new Error('automation blew up'));
+      await expect(
+        service.createRecord(ctx, 't1', { f_name: 'Ada' }),
+      ).resolves.toBeTruthy();
+      // the row was inserted before the (failed) dispatch
+      expect(recordRepo.insert).toHaveBeenCalledTimes(1);
+    });
+
+    it('still resolves updateRecord when the change listener rejects', async () => {
+      const { service, eventEmitter } = make({
+        updateWithVersion: jest
+          .fn()
+          .mockResolvedValue({ id: 'r1', version: 4, data: { f_name: 'new' } }),
+      });
+      eventEmitter.emitAsync.mockRejectedValueOnce(new Error('automation blew up'));
+      await expect(
+        service.updateRecord(ctx, 't1', 'r1', 3, { f_name: 'new' }),
+      ).resolves.toBeTruthy();
+    });
+
+    // A root user write seeds a shared fan-out budget onto the emitted event's
+    // ctx, so the whole cascade draws down a single MAX_AUTOMATION_WRITES pool.
+    it('seeds a shared automation budget on the emitted event for a root write', async () => {
+      const { service, eventEmitter } = make();
+      await service.createRecord(ctx, 't1', { f_name: 'Ada' });
+      const event = eventEmitter.emitAsync.mock.calls[0][1];
+      expect(event.ctx.automationBudget).toBeDefined();
+      expect(event.ctx.automationBudget.remaining).toBeGreaterThan(0);
+    });
+
+    it('does not reset an existing budget on a nested write', async () => {
+      const { service, eventEmitter } = make();
+      const budget = { remaining: 7 };
+      await service.createRecord(
+        { ...ctx, automationBudget: budget } as MxdContext,
+        't1',
+        { f_name: 'Ada' },
+      );
+      const event = eventEmitter.emitAsync.mock.calls[0][1];
+      expect(event.ctx.automationBudget).toBe(budget); // same object, not reseeded
+      expect(event.ctx.automationBudget.remaining).toBe(7);
+    });
+  });
 });

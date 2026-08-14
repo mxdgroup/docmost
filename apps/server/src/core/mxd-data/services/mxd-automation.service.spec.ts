@@ -163,4 +163,28 @@ describe('MxdAutomationService — executor', () => {
       expect.objectContaining({ status: 'error', error: 'boom' }),
     );
   });
+
+  // P1 regression: the executor must never reject back through emitAsync into
+  // the committed write, even for errors OUTSIDE the per-rule try/catch.
+  it('swallows a listEnabledForTable failure (never rethrows to the write)', async () => {
+    const { service, ruleRepo } = make();
+    ruleRepo.listEnabledForTable.mockRejectedValueOnce(new Error('db blip'));
+    await expect(service.onRecordChanged(event())).resolves.toBeUndefined();
+  });
+
+  it('swallows a run-log insert failure (never rethrows to the write)', async () => {
+    const { service, runRepo } = make({ enabledRules: [rule()] });
+    runRepo.insert.mockRejectedValueOnce(new Error('run-log down'));
+    await expect(service.onRecordChanged(event())).resolves.toBeUndefined();
+  });
+
+  // P0 regression: with a shared budget already exhausted, the executor does no
+  // work in this branch of the cascade — total fan-out stays bounded.
+  it('stops when the shared fan-out budget is exhausted', async () => {
+    const { service, actionRunner } = make({ enabledRules: [rule()] });
+    await service.onRecordChanged(
+      event({ ctx: { ...ctx, automationBudget: { remaining: 0 } } }),
+    );
+    expect(actionRunner.run).not.toHaveBeenCalled();
+  });
 });

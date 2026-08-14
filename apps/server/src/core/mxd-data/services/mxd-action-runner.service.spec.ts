@@ -96,4 +96,42 @@ describe('MxdActionRunner', () => {
     expect(res.directives).toEqual([]);
     expect(recordService.updateRecord).not.toHaveBeenCalled();
   });
+
+  // Fan-out breadth guard (P0 regression): a shared budget on ctx caps how many
+  // create actions actually spawn, regardless of how many are listed.
+  it('stops spawning createRecord actions once the shared budget is exhausted', async () => {
+    const { runner, recordService } = make();
+    const budget = { remaining: 2 };
+    const budgetCtx: MxdContext = { ...ctx, automationBudget: budget };
+    await runner.run(
+      budgetCtx,
+      't1',
+      'r1',
+      [
+        { type: 'createRecord', cells: { f_name: 'a' } } as any,
+        { type: 'createRecord', cells: { f_name: 'b' } } as any,
+        { type: 'createRecord', cells: { f_name: 'c' } } as any,
+        { type: 'createRecord', cells: { f_name: 'd' } } as any,
+        { type: 'createRecord', cells: { f_name: 'e' } } as any,
+      ],
+      {},
+    );
+    // Only 2 of the 5 create actions ran; the budget is drained to 0.
+    expect(recordService.createRecord).toHaveBeenCalledTimes(2);
+    expect(budget.remaining).toBe(0);
+  });
+
+  it('spends a budget unit on the cell-patch update as well', async () => {
+    const { runner, recordService } = make();
+    const budget = { remaining: 5 };
+    await runner.run(
+      { ...ctx, automationBudget: budget } as MxdContext,
+      't1',
+      'r1',
+      [{ type: 'setField', fieldId: 'f_name', value: 'x' } as any],
+      {},
+    );
+    expect(recordService.updateRecord).toHaveBeenCalledTimes(1);
+    expect(budget.remaining).toBe(4);
+  });
 });

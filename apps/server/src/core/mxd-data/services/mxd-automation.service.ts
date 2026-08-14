@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -36,6 +37,8 @@ interface AutomationTrigger {
 // failure is isolated + logged (never fails the user's write).
 @Injectable()
 export class MxdAutomationService {
+  private readonly logger = new Logger(MxdAutomationService.name);
+
   constructor(
     private readonly tableRepo: MxdTableRepo,
     private readonly fieldRepo: MxdFieldRepo,
@@ -164,25 +167,51 @@ export class MxdAutomationService {
   }
 
   // The executor. Runs synchronously within the emitting write (emitAsync) so a
-  // records/get right after reflects the automation's effect. Bounded by the
-  // chain-depth guard; each rule is isolated (its failure is logged, never
-  // rethrown to fail the user's write).
+  // records/get right after reflects the automation's effect. Bounded by BOTH
+  // the chain-depth guard and the shared per-root-event write budget (breadth).
+  //
+  // The ENTIRE body is wrapped so nothing here can ever reject back through
+  // emitAsync into the user's already-committed write (the record service also
+  // swallows dispatch failures — this is the inner half of that guarantee).
+  // Each rule is additionally isolated so one failing rule doesn't stop others.
   @OnEvent(MXD_RECORD_CHANGED)
   async onRecordChanged(event: MxdRecordChangedEvent): Promise<void> {
+    try {
+      await this.runRules(event);
+    } catch (e: any) {
+      // Last-resort guard: listEnabledForTable / unexpected errors must never
+      // propagate out of the listener and fail the committed write.
+      this.logger.error(
+        `mxd automation executor failed for ${event.triggerType} ${event.tableId}/${event.recordId}: ${
+          e?.message ?? e
+        }`,
+      );
+    }
+  }
+
+  private async runRules(event: MxdRecordChangedEvent): Promise<void> {
     const { ctx, tableId, recordId, triggerType, changedFieldIds } = event;
     const depth = ctx.automationDepth ?? 0;
-    if (depth >= MAX_AUTOMATION_DEPTH) return; // loop guard
+    if (depth >= MAX_AUTOMATION_DEPTH) return; // loop guard (chain length)
+    // Breadth guard: if the shared root-event budget is already exhausted, stop
+    // before doing any more work in this branch of the cascade.
+    if (ctx.automationBudget && ctx.automationBudget.remaining <= 0) return;
 
     const rules = await this.ruleRepo.listEnabledForTable(
       ctx.workspaceId,
       tableId,
     );
+    // childCtx carries the SAME budget object (spread copies the reference), so
+    // every descendant write across the whole cascade draws down one budget.
     const childCtx: MxdContext = { ...ctx, automationDepth: depth + 1 };
 
     for (const rule of rules) {
+      if (ctx.automationBudget && ctx.automationBudget.remaining <= 0) break;
       if (!this.matches(rule.trigger as any, triggerType, changedFieldIds)) {
         continue;
       }
+      let status: 'success' | 'error' = 'success';
+      let error: string | undefined;
       try {
         await this.actionRunner.run(
           childCtx,
@@ -191,22 +220,27 @@ export class MxdAutomationService {
           rule.actions as unknown as ButtonAction[],
           { allowOpenUrl: false },
         );
+      } catch (e: any) {
+        status = 'error';
+        error = String(e?.message ?? e).slice(0, 500);
+      }
+      // Recording the run is itself isolated — a failure to write the audit row
+      // must not abort the remaining rules or bubble out of the listener.
+      try {
         await this.runRepo.insert({
           workspaceId: ctx.workspaceId,
           ruleId: rule.id,
           recordId,
           triggerType,
-          status: 'success',
+          status,
+          ...(error ? { error } : {}),
         });
       } catch (e: any) {
-        await this.runRepo.insert({
-          workspaceId: ctx.workspaceId,
-          ruleId: rule.id,
-          recordId,
-          triggerType,
-          status: 'error',
-          error: String(e?.message ?? e).slice(0, 500),
-        });
+        this.logger.error(
+          `mxd automation run-log insert failed for rule ${rule.id}: ${
+            e?.message ?? e
+          }`,
+        );
       }
     }
   }
