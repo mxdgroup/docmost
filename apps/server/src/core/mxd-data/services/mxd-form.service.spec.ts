@@ -35,25 +35,37 @@ function make(over: any = {}) {
     delete: jest.fn().mockResolvedValue(undefined),
   };
   const tableRepo = {
-    findById: jest.fn().mockResolvedValue({ id: 't1', pageId: 'p1', spaceId: 's1' }),
+    findById: jest
+      .fn()
+      .mockResolvedValue({ id: 't1', pageId: 'p1', spaceId: 's1', workspaceId: 'ws1' }),
   };
   const fieldRepo = { listByTable: jest.fn().mockResolvedValue(fields) };
-  const recordRepo = {
-    maxPosition: jest.fn().mockResolvedValue(0),
-    insert: jest.fn().mockImplementation(async (v: any) => ({ id: 'r1', ...v })),
-  };
   const access = {
     authorizeRead: jest.fn().mockResolvedValue(undefined),
     authorizeWrite: jest.fn().mockResolvedValue(undefined),
+  };
+  const recordService = {
+    createFromTrustedSource: jest.fn().mockImplementation(async (_ctx, tableId, cells) => ({
+      id: 'r1',
+      tableId,
+      data: cells,
+    })),
+  };
+  const shareRepo = {
+    isSharingAllowed:
+      'isSharingAllowed' in over
+        ? over.isSharingAllowed
+        : jest.fn().mockResolvedValue(true),
   };
   const service = new MxdFormService(
     formRepo as any,
     tableRepo as any,
     fieldRepo as any,
-    recordRepo as any,
     access as any,
+    recordService as any,
+    shareRepo as any,
   );
-  return { service, formRepo, recordRepo, access };
+  return { service, formRepo, tableRepo, access, recordService, shareRepo };
 }
 
 describe('MxdFormService — authenticated', () => {
@@ -108,28 +120,48 @@ describe('MxdFormService — public', () => {
     );
   });
 
-  it('submit validates + inserts a record with an anonymous creator', async () => {
-    const { service, recordRepo } = make();
+  it('submit validates + creates a record through the trusted-source record path', async () => {
+    const { service, recordService } = make();
     await service.submitForm('k1', { f_name: 42, f_age: '7' });
-    const rec = recordRepo.insert.mock.calls[0][0];
-    expect(rec.data).toEqual({ f_name: '42', f_age: 7 }); // normalized
-    expect(rec.creatorId).toBeNull();
-    expect(rec.creatorGuestName).toBe('Form');
-    expect(rec.tableId).toBe('t1');
+    expect(recordService.createFromTrustedSource).toHaveBeenCalledTimes(1);
+    const [anonCtx, tableId, cells] =
+      recordService.createFromTrustedSource.mock.calls[0];
+    expect(cells).toEqual({ f_name: 42, f_age: '7' }); // normalization happens in MxdRecordService
+    expect(tableId).toBe('t1');
+    expect(anonCtx.userId).toBeNull();
+    expect(anonCtx.guestName).toBe('Form');
+    expect(anonCtx.workspaceId).toBe('ws1');
   });
 
   it('submit rejects a value for a field not on the form (even if it exists)', async () => {
-    const { service, recordRepo } = make();
+    const { service, recordService } = make();
     await expect(
       service.submitForm('k1', { f_name: 'ok', f_calc: 'x' }),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(recordRepo.insert).not.toHaveBeenCalled();
+    expect(recordService.createFromTrustedSource).not.toHaveBeenCalled();
   });
 
-  it('submit surfaces a field-type validation error', async () => {
-    const { service } = make();
-    await expect(
-      service.submitForm('k1', { f_age: 'not-a-number' }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+  it('submit is rejected with 404 when the sharing kill switch is off', async () => {
+    const isSharingAllowed = jest.fn().mockResolvedValue(false);
+    const { service, recordService } = make({ isSharingAllowed });
+    await expect(service.submitForm('k1', { f_name: 'ok' })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(recordService.createFromTrustedSource).not.toHaveBeenCalled();
+  });
+
+  it('getPublicForm is rejected with 404 when the sharing kill switch is off', async () => {
+    const isSharingAllowed = jest.fn().mockResolvedValue(false);
+    const { service, tableRepo } = make({ isSharingAllowed });
+    await expect(service.getPublicForm('k1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(isSharingAllowed).toHaveBeenCalledWith('ws1', 's1');
+    expect(tableRepo.findById).toHaveBeenCalled();
   });
 });
+
+// The unified write path itself (validation, history, automation dispatch) is
+// covered by mxd-record.service.spec.ts — createFromTrustedSource shares the
+// exact same implementation as createRecord (createRecordCore), so those
+// assertions apply here too rather than being duplicated.

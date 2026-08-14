@@ -192,7 +192,38 @@ export class MxdRecordService {
     tableId: string,
     cells: Record<string, unknown>,
   ): Promise<MxdRecord> {
-    await this.requireTableWrite(ctx, tableId);
+    return this.createRecordCore(ctx, tableId, cells, true);
+  }
+
+  // Same validation + insert + history + automation dispatch as createRecord,
+  // for a caller whose OWN authorization already gates the write (a public form
+  // submission, gated by the form's `enabled` flag + the workspace/space
+  // sharing kill switch — see MxdFormService). The table's page/space
+  // authorizeWrite check is skipped; everything else — field validation,
+  // history row, record_created automation dispatch — is IDENTICAL to
+  // createRecord. This is deliberate parity: one write implementation, two
+  // entrypoints, so a trusted-source write is never a second, subtly
+  // different record-write path.
+  async createFromTrustedSource(
+    ctx: MxdContext,
+    tableId: string,
+    cells: Record<string, unknown>,
+  ): Promise<MxdRecord> {
+    return this.createRecordCore(ctx, tableId, cells, false);
+  }
+
+  private async createRecordCore(
+    ctx: MxdContext,
+    tableId: string,
+    cells: Record<string, unknown>,
+    authorize: boolean,
+  ): Promise<MxdRecord> {
+    if (authorize) {
+      await this.requireTableWrite(ctx, tableId);
+    } else {
+      const table = await this.tableRepo.findById(ctx.workspaceId, tableId);
+      if (!table) throw new NotFoundException('Table not found');
+    }
     const fields = await this.fieldRepo.listByTable(ctx.workspaceId, tableId);
     const data = this.validateCells(fields, cells);
     const position = (await this.recordRepo.maxPosition(

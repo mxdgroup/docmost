@@ -4,15 +4,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ShareRepo } from '@docmost/db/repos/share/share.repo';
 import { MxdTableRepo } from '@docmost/db/repos/mxd-data/mxd-table.repo';
 import { MxdFieldRepo } from '@docmost/db/repos/mxd-data/mxd-field.repo';
-import { MxdRecordRepo } from '@docmost/db/repos/mxd-data/mxd-record.repo';
 import { MxdFormRepo } from '@docmost/db/repos/mxd-data/mxd-form.repo';
-import { MxdField, MxdForm } from '@docmost/db/types/entity.types';
+import { MxdField, MxdForm, MxdTable } from '@docmost/db/types/entity.types';
 import { MxdContext } from '../mxd-context';
 import { MxdAccessService } from '../mxd-access.service';
+import { MxdRecordService } from './mxd-record.service';
 import { getFieldType } from '../field-types/field-types.registry';
-import { FieldConfig, FieldValidationError } from '../field-types/field-type';
+import { FieldConfig } from '../field-types/field-type';
 
 const MAX_FORM_FIELDS = 50;
 
@@ -33,18 +34,23 @@ export interface PublicForm {
 
 // MXD data platform — public forms. Authenticated CRUD is authorized against the
 // table like the rest of the platform. The PUBLIC path (get + submit) is
-// anonymous by design: an enabled form is itself the authorization to create ONE
-// record using ONLY its whitelisted, settable fields — every value is validated
-// by the field-type registry, unknown/computed/relation fields are rejected, and
-// the record is inserted directly (never through the authenticated write path).
+// anonymous by design: an enabled form (plus the workspace/space public-sharing
+// kill switch — same gate as mxd-public-data.service.ts) is itself the
+// authorization to create ONE record using ONLY its whitelisted, settable
+// fields. The write itself goes through MxdRecordService#createFromTrustedSource
+// — the SAME validation + insert + history + record_created automation dispatch
+// as every other create — so a form submission has intentional parity with a
+// normal write. Only the table's page/space authorizeWrite check is skipped
+// (the form + its sharing gate is the authorization instead).
 @Injectable()
 export class MxdFormService {
   constructor(
     private readonly formRepo: MxdFormRepo,
     private readonly tableRepo: MxdTableRepo,
     private readonly fieldRepo: MxdFieldRepo,
-    private readonly recordRepo: MxdRecordRepo,
     private readonly access: MxdAccessService,
+    private readonly recordService: MxdRecordService,
+    private readonly shareRepo: ShareRepo,
   ) {}
 
   private async requireTable(ctx: MxdContext, tableId: string, write: boolean) {
@@ -153,12 +159,24 @@ export class MxdFormService {
 
   // ---- public (anonymous)
 
-  private async loadEnabledForm(key: string): Promise<{ form: MxdForm; fields: MxdField[] }> {
+  private async loadEnabledForm(
+    key: string,
+  ): Promise<{ form: MxdForm; fields: MxdField[]; table: MxdTable }> {
     const form = await this.formRepo.findByKey(key);
     // A disabled or missing form is indistinguishable to the public (404).
     if (!form || !form.enabled) throw new NotFoundException('Form not found');
+    const table = await this.tableRepo.findById(form.workspaceId, form.tableId);
+    if (!table) throw new NotFoundException('Form not found');
+    // Respect the workspace/space public-sharing kill switch — the same gate
+    // the public-data path enforces (mxd-public-data.service.ts). A form is a
+    // public-facing surface too: disabling public sharing must disable it.
+    const allowed = await this.shareRepo.isSharingAllowed(
+      table.workspaceId,
+      table.spaceId,
+    );
+    if (!allowed) throw new NotFoundException('Form not found');
     const fields = await this.fieldRepo.listByTable(form.workspaceId, form.tableId);
-    return { form, fields };
+    return { form, fields, table };
   }
 
   async getPublicForm(key: string): Promise<PublicForm> {
@@ -193,41 +211,35 @@ export class MxdFormService {
     const allowed = new Set((form.fieldIds as string[]) ?? []);
     const byId = new Map(fields.map((f) => [f.id, f]));
 
-    const data: Record<string, unknown> = {};
+    // Whitelist enforcement stays form-specific: only values for fields the
+    // form actually collects are allowed through, whether or not the field
+    // still exists (a deleted field silently drops). Per-value validation
+    // (unknown-for-table, computed/relation/button rejection, type
+    // normalization) is NOT duplicated here — createFromTrustedSource runs the
+    // exact same validateCells the authenticated write path uses.
+    const cells: Record<string, unknown> = {};
     for (const [fieldId, raw] of Object.entries(values ?? {})) {
       if (!allowed.has(fieldId)) {
         throw new BadRequestException(`Field not on this form: ${fieldId}`);
       }
-      const field = byId.get(fieldId);
-      if (!field) continue;
-      const type = getFieldType(field.type);
-      if (type.isComputed || type.isRelation || field.type === 'button') {
-        throw new BadRequestException(`Field ${field.name} can't be set`);
-      }
-      try {
-        data[fieldId] = type.normalize(raw, (field.config ?? {}) as FieldConfig);
-      } catch (err) {
-        if (err instanceof FieldValidationError) {
-          throw new BadRequestException(`${field.name}: ${err.message}`);
-        }
-        throw err;
-      }
+      if (!byId.has(fieldId)) continue;
+      cells[fieldId] = raw;
     }
 
-    const position =
-      (await this.recordRepo.maxPosition(form.workspaceId, form.tableId)) + 1;
-    // Inserted directly (not through the authenticated write path): the enabled
-    // form is the authorization, and only its validated fields are written.
-    await this.recordRepo.insert({
-      tableId: form.tableId,
+    // Anonymous trusted-source context: the enabled form + the sharing kill
+    // switch (checked in loadEnabledForm) is the authorization. Routing
+    // through MxdRecordService gives the submission the same history row and
+    // record_created automation dispatch as every other create.
+    const anonCtx: MxdContext = {
       workspaceId: form.workspaceId,
-      data: data as any,
-      position,
-      version: 1,
-      creatorId: null,
-      creatorGuestName: 'Form',
-      updatedById: null,
-    });
+      userId: null,
+      guestName: 'Form',
+    };
+    await this.recordService.createFromTrustedSource(
+      anonCtx,
+      form.tableId,
+      cells,
+    );
     return { success: true };
   }
 }

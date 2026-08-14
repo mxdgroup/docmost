@@ -279,6 +279,62 @@ describe('MxdRecordService', () => {
     });
   });
 
+  describe('createFromTrustedSource (unified write path, authz skipped)', () => {
+    // Same body as createRecord (createRecordCore) — validation, history,
+    // record_created dispatch — minus the table authorizeWrite check. Used by
+    // MxdFormService for public form submissions.
+    it('skips authorizeWrite but still validates, inserts, and writes history', async () => {
+      const { service, recordRepo, access, historyRepo } = make();
+      const anonCtx: MxdContext = {
+        workspaceId: 'ws1',
+        userId: null,
+        guestName: 'Form',
+      };
+      const record = await service.createFromTrustedSource(anonCtx, 't1', {
+        f_name: 'Ada',
+      });
+      expect(access.authorizeWrite).not.toHaveBeenCalled();
+      expect(recordRepo.insert).toHaveBeenCalledTimes(1);
+      const inserted = recordRepo.insert.mock.calls[0][0];
+      expect(inserted.data).toEqual({ f_name: 'Ada' });
+      expect(inserted.creatorId).toBeNull();
+      expect(inserted.creatorGuestName).toBe('Form');
+      const entry = historyRepo.insert.mock.calls[0][0];
+      expect(entry.action).toBe('create');
+      expect(entry.actorGuestName).toBe('Form');
+      expect(record).toBeTruthy();
+    });
+
+    it('emits a record_created event, same as createRecord', async () => {
+      const { service, eventEmitter } = make();
+      const anonCtx: MxdContext = {
+        workspaceId: 'ws1',
+        userId: null,
+        guestName: 'Form',
+      };
+      await service.createFromTrustedSource(anonCtx, 't1', { f_name: 'Ada' });
+      const event = eventEmitter.emitAsync.mock.calls[0][1];
+      expect(event.triggerType).toBe('record_created');
+    });
+
+    it('still rejects a field id that is not on the table (validation not skipped)', async () => {
+      const { service } = make();
+      const anonCtx: MxdContext = { workspaceId: 'ws1', userId: null };
+      await expect(
+        service.createFromTrustedSource(anonCtx, 't1', { f_other: 'x' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('404s when the table is not in the workspace', async () => {
+      const { service, tableRepo } = make();
+      tableRepo.findById.mockResolvedValue(undefined);
+      const anonCtx: MxdContext = { workspaceId: 'ws1', userId: null };
+      await expect(
+        service.createFromTrustedSource(anonCtx, 't1', { f_name: 'x' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
   describe('automation dispatch isolation (P1 regression)', () => {
     // A committed write must never be turned into a failure by a downstream
     // automation-listener error — otherwise the client retries and duplicates.
