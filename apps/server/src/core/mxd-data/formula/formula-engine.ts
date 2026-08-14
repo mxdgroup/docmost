@@ -263,7 +263,37 @@ export function compileFormula(expression: string): CompiledFormula {
             return n.op === '-' ? -num : num;
           }
           case 'bin': return binop(n.op, () => ev(n.a), () => ev(n.b));
-          case 'call': return callFn(n.name, n.args.map(ev));
+          case 'call': {
+            // IF/AND/OR/NOT are short-circuiting: only the branch(es) whose
+            // value is actually needed get evaluated, so e.g.
+            // IF({x}=0, 0, {y}/{x}) doesn't blow up on x=0 (the division
+            // branch is never touched). Every other function is unaffected
+            // and still goes through callFn with eagerly evaluated args.
+            switch (n.name) {
+              case 'IF': {
+                if (n.args.length < 2) throw new FormulaError('IF needs at least 2 args');
+                return truthy(ev(n.args[0]))
+                  ? ev(n.args[1])
+                  : n.args.length > 2 ? (ev(n.args[2]) ?? null) : null;
+              }
+              case 'AND': {
+                for (const a of n.args) {
+                  if (!truthy(ev(a))) return false;
+                }
+                return true;
+              }
+              case 'OR': {
+                for (const a of n.args) {
+                  if (truthy(ev(a))) return true;
+                }
+                return false;
+              }
+              case 'NOT':
+                return !truthy(n.args.length > 0 ? ev(n.args[0]) : undefined);
+              default:
+                return callFn(n.name, n.args.map(ev));
+            }
+          }
         }
       };
       return ev(ast);

@@ -43,6 +43,46 @@ describe('formula engine', () => {
     expect(evl('COALESCE({x}, {y}, 5)', { x: null, y: null })).toBe(5);
   });
 
+  describe('short-circuit / lazy evaluation', () => {
+    it('IF does not evaluate the untaken branch (division by zero avoided)', () => {
+      expect(evl('IF({x} = 0, 0, {y} / {x})', { x: 0, y: 10 })).toBe(0);
+    });
+    it('IF still evaluates and propagates errors from the taken branch', () => {
+      expect(() =>
+        evl('IF({x} = 0, {y} / {x}, 0)', { x: 0, y: 10 }),
+      ).toThrow(FormulaError);
+    });
+    it('IF still takes the truthy branch normally', () => {
+      expect(evl('IF({x} = 0, 0, {y} / {x})', { x: 2, y: 10 })).toBe(5);
+    });
+    it('nested IF short-circuits correctly at both levels', () => {
+      const expr = 'IF({a} = 1, IF({b} = 0, 0, {c} / {b}), {d} / {a})';
+      // a=1 -> takes inner IF; b=0 -> takes 0, so {c}/{b} must not evaluate.
+      expect(evl(expr, { a: 1, b: 0, c: 10, d: 99 })).toBe(0);
+      // a=0 -> takes {d}/{a}, which is a division by zero -> should throw.
+      expect(() => evl(expr, { a: 0, b: 0, c: 10, d: 99 })).toThrow(
+        FormulaError,
+      );
+    });
+    it('AND short-circuits on first falsy arg', () => {
+      expect(evl('AND(FALSE, {y} / 0 > 0)', { y: 10 })).toBe(false);
+      expect(evl('AND(TRUE, TRUE)')).toBe(true);
+      expect(evl('AND(TRUE, FALSE)')).toBe(false);
+    });
+    it('OR short-circuits on first truthy arg', () => {
+      expect(evl('OR(TRUE, {y} / 0 > 0)', { y: 10 })).toBe(true);
+      expect(evl('OR(FALSE, FALSE)')).toBe(false);
+      expect(evl('OR(FALSE, TRUE)')).toBe(true);
+    });
+    it('NOT evaluates its single arg', () => {
+      expect(evl('NOT(TRUE)')).toBe(false);
+      expect(evl('NOT(FALSE)')).toBe(true);
+    });
+    it('IF with missing args still throws (arg-count validation preserved)', () => {
+      expect(() => evl('IF({x} = 0)', { x: 0 })).toThrow(FormulaError);
+    });
+  });
+
   it('reports its field dependencies', () => {
     expect(formulaDependencies('{a} + IF({b} > 0, {c}, 0)').sort()).toEqual([
       'a',
