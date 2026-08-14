@@ -1,5 +1,6 @@
 import { ActionIcon, Group, Menu, Text, ThemeIcon, Tooltip } from "@mantine/core";
 import {
+  IconWorld,
   IconArrowRight,
   IconArrowsHorizontal,
   IconDots,
@@ -34,6 +35,11 @@ import { useDeletePageModal } from "@/features/page/hooks/use-delete-page-modal.
 import { PageWidthToggle } from "@/features/user/components/page-width-pref.tsx";
 import { Trans, useTranslation } from "react-i18next";
 import ExportModal from "@/components/common/export-modal";
+import MxdShareAccessModal from "@/features/share/components/mxd-share-access-modal.tsx";
+import {
+  isShareEditEnabled,
+  isShareGuestCommentsEnabled,
+} from "@/lib/config.ts";
 import { htmlToMarkdown } from "@docmost/editor-ext";
 import {
   pageEditorAtom,
@@ -159,6 +165,10 @@ function PageActionMenu({ readOnly }: PageActionMenuProps) {
   const [
     verificationOpened,
     { open: openVerificationModal, close: closeVerificationModal },
+  ] = useDisclosure(false);
+  const [
+    shareAccessOpened,
+    { open: openShareAccessModal, close: closeShareAccessModal },
   ] = useDisclosure(false);
   const [pageEditor] = useAtom(pageEditorAtom);
   const pageUpdatedAt = useTimeAgo(page?.updatedAt);
@@ -328,6 +338,20 @@ function PageActionMenu({ readOnly }: PageActionMenuProps) {
             {t("Print PDF")}
           </Menu.Item>
 
+          {/* MXD fork: public-link access level (view/comment/edit). It lives
+              here rather than in the Share dialog because that dialog is the EE
+              component, which the fork must not modify (ee-clean-room CI).
+              Shown only when a fork sharing flag is enabled. */}
+          {!readOnly &&
+            (isShareEditEnabled() || isShareGuestCommentsEnabled()) && (
+              <Menu.Item
+                leftSection={<IconWorld size={16} />}
+                onClick={openShareAccessModal}
+              >
+                {t("Public link access")}
+              </Menu.Item>
+            )}
+
           {!readOnly && (
             <>
               <Menu.Divider />
@@ -397,6 +421,12 @@ function PageActionMenu({ readOnly }: PageActionMenuProps) {
         pageId={page.id}
         opened={verificationOpened}
         onClose={closeVerificationModal}
+      />
+
+      <MxdShareAccessModal
+        pageId={page.id}
+        opened={shareAccessOpened}
+        onClose={closeShareAccessModal}
       />
     </>
   );
