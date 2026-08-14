@@ -30,6 +30,7 @@ import PdfRenderPage from "@/ee/pdf-export/pdf-render-page.tsx";
 import Shares from "@/pages/settings/shares/shares.tsx";
 import ShareLayout from "@/features/share/components/share-layout.tsx";
 import ShareRedirect from "@/pages/share/share-redirect.tsx";
+import MxdPublicFormPage from "@/features/mxd-data/pages/mxd-public-form-page.tsx";
 import { useTrackOrigin } from "@/hooks/use-track-origin";
 import SpacesPage from "@/pages/spaces/spaces.tsx";
 import { MfaChallengePage } from "@/ee/mfa/pages/mfa-challenge-page";
@@ -85,6 +86,7 @@ export default function App() {
         </Route>
 
         <Route path={"/pdf-render/:pageId"} element={<PdfRenderPage />} />
+        <Route path={"/forms/:key"} element={<MxdPublicFormPage />} />
         <Route path={"/share/:shareId"} element={<ShareRedirect />} />
         <Route path={"/p/:pageSlug"} element={<PageRedirect />} />
 

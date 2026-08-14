@@ -22,6 +22,8 @@ export type SlashMenuItemType = {
   command: (props: CommandProps) => void;
   disable?: (editor: ReturnType<typeof useEditor>) => boolean;
   requiresBases?: true;
+  // MXD: hide unless MXD_DATA_PLATFORM_ENABLED (feature ships dark).
+  requiresMxdData?: true;
 };
 
 export type SlashMenuGroupedItemsType = {

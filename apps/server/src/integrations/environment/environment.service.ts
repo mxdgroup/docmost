@@ -229,6 +229,13 @@ export class EnvironmentService {
     return value === 'true';
   }
 
+  isMxdDataPlatformEnabled(): boolean {
+    const value = this.configService
+      .get<string>('MXD_DATA_PLATFORM_ENABLED', 'false')
+      .toLowerCase();
+    return value === 'true';
+  }
+
   getStripePublishableKey(): string {
     return this.configService.get<string>('STRIPE_PUBLISHABLE_KEY');
   }

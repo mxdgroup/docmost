@@ -12,11 +12,15 @@ import {
   WebSocketStatus,
   onStatusParameters,
 } from "@hocuspocus/provider";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, useEditor, Editor } from "@tiptap/react";
 import {
   collabExtensions,
   mainExtensions,
 } from "@/features/editor/extensions/extensions";
+import {
+  handleFileDrop,
+  handlePaste,
+} from "@/features/editor/components/common/editor-paste-handler";
 import useCollaborationUrl from "@/features/editor/hooks/use-collaboration-url";
 import { getShareCollabToken } from "@/features/share/services/share-service";
 import { Alert, Text } from "@mantine/core";
@@ -115,7 +119,12 @@ export default function SharedPageCollabEditor({
   }
 
   return (
-    <GuestEditor provider={provider} title={title} connected={connected} />
+    <GuestEditor
+      provider={provider}
+      title={title}
+      connected={connected}
+      pageId={pageId}
+    />
   );
 }
 
@@ -123,12 +132,15 @@ function GuestEditor({
   provider,
   title,
   connected,
+  pageId,
 }: {
   provider: HocuspocusProvider;
   title: string;
   connected: boolean;
+  pageId: string;
 }) {
   const { t } = useTranslation();
+  const editorRef = useRef<Editor | null>(null);
   const editor = useEditor(
     {
       extensions: [
@@ -138,6 +150,23 @@ function GuestEditor({
       editable: true,
       immediatelyRender: false,
       shouldRerenderOnTransaction: false,
+      // Image upload via paste/drop uses the SAME authenticated attachment
+      // endpoint as the normal editor. It succeeds for a logged-in editor with
+      // page access (owner / space member) and fails gracefully (401/403 -> a
+      // notification) for an anonymous share visitor — no anonymous upload path.
+      editorProps: {
+        handlePaste: (_view, event) => {
+          if (!editorRef.current) return false;
+          return handlePaste(editorRef.current, event, pageId);
+        },
+        handleDrop: (_view, event, _slice, moved) => {
+          if (!editorRef.current) return false;
+          return handleFileDrop(editorRef.current, event, moved, pageId);
+        },
+      },
+      onCreate({ editor }) {
+        editorRef.current = editor as Editor;
+      },
     },
     [provider],
   );

@@ -58,6 +58,13 @@ export function isShareGuestCommentsEnabled(): boolean {
   return castToBoolean(getConfigValue("SHARE_GUEST_COMMENTS_ENABLED"));
 }
 
+export function isMxdDataPlatformEnabled(): boolean {
+  if (import.meta.env.DEV) {
+    return castToBoolean(process.env.MXD_DATA_PLATFORM_ENABLED);
+  }
+  return castToBoolean(getConfigValue("MXD_DATA_PLATFORM_ENABLED"));
+}
+
 export function getAvatarUrl(
   avatarUrl: string,
   type: AvatarIconType = AvatarIconType.AVATAR,

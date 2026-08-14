@@ -638,6 +638,123 @@ export interface UserSessions {
   createdAt: Generated<Timestamp>;
 }
 
+// MXD data platform (roadmap Phase 4). Hand-maintained like shares.mode — the
+// mxd_* tables are fork-owned and never part of upstream codegen. camelCase
+// fields; the CamelCasePlugin maps to the snake_case columns in migrations-mxd.
+export interface MxdTables {
+  createdAt: Generated<Timestamp>;
+  creatorId: string | null;
+  deletedAt: Timestamp | null;
+  id: Generated<string>;
+  pageId: string | null;
+  primaryFieldId: string | null;
+  spaceId: string;
+  title: Generated<string>;
+  updatedAt: Generated<Timestamp>;
+  workspaceId: string;
+}
+
+export interface MxdFields {
+  config: Generated<Json>;
+  createdAt: Generated<Timestamp>;
+  id: Generated<string>;
+  name: string;
+  position: Generated<number>;
+  tableId: string;
+  type: string;
+  updatedAt: Generated<Timestamp>;
+  workspaceId: string;
+}
+
+export interface MxdRecords {
+  createdAt: Generated<Timestamp>;
+  creatorGuestName: string | null;
+  creatorId: string | null;
+  data: Generated<Json>;
+  deletedAt: Timestamp | null;
+  id: Generated<string>;
+  position: Generated<number>;
+  tableId: string;
+  updatedAt: Generated<Timestamp>;
+  updatedById: string | null;
+  version: Generated<number>;
+  workspaceId: string;
+}
+
+export interface MxdViews {
+  config: Generated<Json>;
+  createdAt: Generated<Timestamp>;
+  creatorId: string | null;
+  id: Generated<string>;
+  name: Generated<string>;
+  position: Generated<number>;
+  tableId: string;
+  type: Generated<string>;
+  updatedAt: Generated<Timestamp>;
+  workspaceId: string;
+}
+
+export interface MxdRecordLinks {
+  createdAt: Generated<Timestamp>;
+  fieldId: string;
+  fromRecordId: string;
+  id: Generated<string>;
+  toRecordId: string;
+  workspaceId: string;
+}
+
+export interface MxdAutomationRules {
+  actions: Generated<Json>;
+  createdAt: Generated<Timestamp>;
+  creatorId: string | null;
+  enabled: Generated<boolean>;
+  id: Generated<string>;
+  name: Generated<string>;
+  tableId: string;
+  trigger: Generated<Json>;
+  updatedAt: Generated<Timestamp>;
+  workspaceId: string;
+}
+
+export interface MxdAutomationRuns {
+  createdAt: Generated<Timestamp>;
+  error: string | null;
+  id: Generated<string>;
+  recordId: string;
+  ruleId: string;
+  status: string;
+  triggerType: string;
+  workspaceId: string;
+}
+
+export interface MxdForms {
+  createdAt: Generated<Timestamp>;
+  creatorId: string | null;
+  description: string | null;
+  enabled: Generated<boolean>;
+  fieldIds: Generated<Json>;
+  id: Generated<string>;
+  key: string;
+  submitMessage: string | null;
+  tableId: string;
+  title: Generated<string>;
+  updatedAt: Generated<Timestamp>;
+  workspaceId: string;
+}
+
+export interface MxdRecordHistory {
+  action: string;
+  actorGuestName: string | null;
+  actorId: string | null;
+  changedFieldIds: Generated<Json>;
+  createdAt: Generated<Timestamp>;
+  data: Generated<Json>;
+  id: Generated<string>;
+  recordId: string;
+  tableId: string;
+  workspaceId: string;
+}
+
 export interface DB {
   aiChats: AiChats;
   aiChatMessages: AiChatMessages;
@@ -657,6 +774,15 @@ export interface DB {
   groups: Groups;
   groupUsers: GroupUsers;
   labels: Labels;
+  mxdFields: MxdFields;
+  mxdRecordLinks: MxdRecordLinks;
+  mxdRecords: MxdRecords;
+  mxdTables: MxdTables;
+  mxdViews: MxdViews;
+  mxdAutomationRules: MxdAutomationRules;
+  mxdAutomationRuns: MxdAutomationRuns;
+  mxdRecordHistory: MxdRecordHistory;
+  mxdForms: MxdForms;
   notifications: Notifications;
   pageAccess: PageAccess;
   pageTransclusionReferences: PageTransclusionReferences;

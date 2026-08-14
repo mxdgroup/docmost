@@ -54,6 +54,8 @@ export class StaticModule implements OnModuleInit {
         SHARE_EDIT_ENABLED: this.environmentService.isShareEditEnabled(),
         SHARE_GUEST_COMMENTS_ENABLED:
           this.environmentService.isShareGuestCommentsEnabled(),
+        MXD_DATA_PLATFORM_ENABLED:
+          this.environmentService.isMxdDataPlatformEnabled(),
       };
 
       const windowScriptContent = `<script>window.CONFIG=${JSON.stringify(configString)};</script>`;
