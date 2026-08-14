@@ -1,12 +1,27 @@
 ---
 title: "feat: Cut docs.mxd.digital over to the MXD fork and ship the data platform (two-phase)"
 type: feat
-status: active
+status: superseded
 date: 2026-08-12
 origin: docs/plans/2026-08-09-001-feat-mxd-data-platform-plan.md
 ---
 
 # feat: Cut docs.mxd.digital over to the MXD fork and ship the data platform (two-phase)
+
+> **SUPERSEDED — do not follow this runbook as written.** It was drafted on the belief that
+> production still ran upstream `0.90.1`, so it planned a two-window cutover (Window 1: upstream
+> 0.90→0.95 jump + sharing release; Window 2: the data platform).
+>
+> **That premise was wrong.** The ops repo showed production was already on the fork image
+> `v0.95.0-mxd.3` — the upstream jump and sharing cutover had happened on 2026-08-09. So only the
+> fork-only bump remained, and it shipped on 2026-08-14 as `v0.95.0-mxd.4` (data platform), then
+> `v0.95.0-mxd.5` (public-link access control), each a single short window rather than the
+> two-phase plan below.
+>
+> What actually happened, with evidence, is recorded in the ops repo
+> (`mxdgroup/mxdcompass_mostdocs`): `docs/deploy/DEPLOY-RECORD-2026-08-14-mxd.4.md`,
+> `DEPLOY-RECORD-2026-08-14-mxd.5.md`, and `docs/deploy/ACCESS.md`. Use those. This document is
+> kept only for the reasoning it captures (rollback eras, dark-launch rationale, migration safety).
 
 **Target repos:** `mxdgroup/docmost` (this repo — code, tags, image) and `mxdgroup/mxdcompass_mostdocs` (the ops repo — `docker-compose.yml`, `migration/docmost_import.py`, the `08-upgrade-rollback.md` runbook). Paths below are repo-relative to `mxdgroup/docmost` unless prefixed `ops:`.
 

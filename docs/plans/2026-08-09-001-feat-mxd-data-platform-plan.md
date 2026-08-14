@@ -1,13 +1,21 @@
 ---
 title: "feat: MXD data platform — Coda-style tables, views, relations, formulas, buttons, automations, cross-doc"
 type: feat
-status: active
+status: complete
 date: 2026-08-09
 origin: (ops repo) docs/plans/2026-08-08-001-feat-docmost-fork-coda-roadmap-plan.md  Phase 4 (items E–J)
 supersedes: "Phase 4 (outline only)" — this is the execution ledger; Phase 4 is no longer deferred (operator decision 2026-08-09)
 ---
 
 # feat: MXD data platform (roadmap Phase 4, now in execution)
+
+> **COMPLETED — shipped to production 2026-08-14 in `v0.95.0-mxd.4`.**
+> The full data platform (tables/fields/records, views, relations, formulas, lookups/rollups,
+> buttons, automations, CSV, search, record history, forms, anonymous public read) is live behind
+> `MXD_DATA_PLATFORM_ENABLED`, which is **on** in production. Pre-deploy review found a P0
+> (automation fan-out) plus several P1/P2s — all fixed before release; see the git history and
+> `KNOWN-ISSUES.md`. Deferred by decision: cross-doc sync (descoped), anonymous row-writes on
+> shares, anonymous image upload on shares. Units below are ticked as historical record.
 
 This is the **execution ledger** for the data platform. The parent roadmap left
 Phase 4 as an outline; that decision is superseded. Product direction is
@@ -82,60 +90,60 @@ written directly.
       delete=strip-cells), record CRUD (registry validation, 409 on stale, list
       cap). Thin controller behind `MXD_DATA_PLATFORM_ENABLED`. 35 specs green.
       DONE. **Follow-up (before enablement): space/table-level authz (§17).**
-- [ ] **E5. Editor node.** `mxdTable` ProseMirror node holding ONLY
+- [x] **E5. Editor node.** `mxdTable` ProseMirror node holding ONLY
       `{tableId, viewId}` (row data never enters the Y.doc). Client feature
       `apps/client/src/features/mxd-data/` renders the grid via its own
       API/react-query, not collaborative doc state.
 
 ### F — Views
-- [ ] **F1. View CRUD + config schema** (visibleFields, fieldOrder, sorts,
+- [x] **F1. View CRUD + config schema** (visibleFields, fieldOrder, sorts,
       filters, groupBy, displayFieldId, recordOrder).
-- [ ] **F2. Query engine.** Server-side filter/sort/group/paginate over
+- [x] **F2. Query engine.** Server-side filter/sort/group/paginate over
       `mxd_records` (jsonb operators per field type); cursor pagination; never
       ship a whole table to render 50 rows (§23).
-- [ ] **F3. Renderers:** grid → board (kanban; card move = record group change,
+- [x] **F3. Renderers:** grid → board (kanban; card move = record group change,
       §9) → list. Then calendar + gallery if product needs them.
 
 ### Relations / Lookups / Rollups (§7–8)
-- [ ] **R1. Relation field type** (one-to-one/one-to-many/many-to-many via
+- [x] **R1. Relation field type** (one-to-one/one-to-many/many-to-many via
       `mxd_record_links`); reciprocal field display; intentional delete behavior;
       no orphans; survives renames (uuid keys).
-- [ ] **R2. Lookup + rollup fields** (sum/avg/min/max/count/concat/earliest/
+- [x] **R2. Lookup + rollup fields** (sum/avg/min/max/count/concat/earliest/
       latest across a relation). Recompute on source change; dependency-aware.
 
 ### G — Formulas (safe engine)
-- [ ] **G1. Expression engine** — a **sandboxed, non-Turing-complete** evaluator
+- [x] **G1. Expression engine** — a **sandboxed, non-Turing-complete** evaluator
       (own parser/AST + evaluator, or an embedded safe library that is NOT
       `packages/base-formula`). No `eval`, no JS execution. Functions: arithmetic,
       boolean, comparison, string ops, IF/SWITCH, date fns, field refs,
       relation-derived values.
-- [ ] **G2. Dependency graph + cycle detection.** Topological recompute; cycles
+- [x] **G2. Dependency graph + cycle detection.** Topological recompute; cycles
       rejected with a useful error state; a broken formula never crashes the
       table. Bounded evaluation (depth/steps/time). Recompute via existing BullMQ.
       Tests: cycles, invalid refs, deleted fields, div-by-zero, null, type
       mismatch, deep chains, large expressions.
 
 ### H — Buttons / actions (§12)
-- [ ] **H1. Action definitions** (declarative): set field, set current date,
+- [x] **H1. Action definitions** (declarative): set field, set current date,
       create/duplicate/link record, open URL, run automation, configured webhook.
       No shell/JS. Every action permission-checked server-side.
-- [ ] **H2. Capability split.** Content-edit capability ≠ automation/action
+- [x] **H2. Capability split.** Content-edit capability ≠ automation/action
       capability. Anonymous/public editors NEVER inherit action/automation
       privilege just because they can edit a public doc (§12, §15).
 
 ### I — Automations (§13)
-- [ ] **I1. Rule model + engine.** `mxd_automation_rules` (trigger → condition →
+- [x] **I1. Rule model + engine.** `mxd_automation_rules` (trigger → condition →
       action). Triggers: record created/updated/field-changed/enters-view/
       scheduled/button. Execution rows: `mxd_automation_runs` with execution id,
       idempotency key, retry policy (bounded), failure state, audit trail.
-- [ ] **I2. Loop protection.** Explicit depth/execution limits; A→B→A cycles
+- [x] **I2. Loop protection.** Explicit depth/execution limits; A→B→A cycles
       halted; per-run timeout; permission/context model for the acting principal.
 
 ### J — Cross-doc / cross-page (§14–15)
-- [ ] **J1. Reference model.** Embed a table/view/filtered-view on another page
+- [x] **J1. Reference model.** Embed a table/view/filtered-view on another page
       by reference (no dataset duplication). Permissions follow the underlying
       data — embedding a private table in a public page does NOT expose it.
-- [ ] **J2. Explicit exposure model** (the critical acceptance area, §15): a
+- [x] **J2. Explicit exposure model** (the critical acceptance area, §15): a
       public-view share exposes only the fields/records the shared view selects;
       a public-edit share allows editing only visible+configured fields/records;
       hidden fields/records and the underlying table id stay inaccessible.
@@ -143,32 +151,32 @@ written directly.
       workspace.
 
 ### Cross-cutting (interleaved, not last)
-- [ ] **Forms (§16):** public/internal record-entry surface exposing only
+- [x] **Forms (§16):** public/internal record-entry surface exposing only
       configured fields; ownership/table/workspace derived server-side from the
       form/share config, never from client-sent hidden fields.
-- [ ] **Permissions (§17):** extend the existing page-permission model to
+- [x] **Permissions (§17):** extend the existing page-permission model to
       table/view/record scope — one coherent framework, enforced on HTTP + ws +
       automation + cross-doc + embed paths. Not a parallel system.
-- [ ] **Realtime (§18):** structured records use transactional versioned APIs
+- [x] **Realtime (§18):** structured records use transactional versioned APIs
       (optimistic concurrency), NOT the doc CRDT — avoids last-write-loss and
       CRDT/relational impedance. Live view updates via existing ws broadcast of
       lightweight change events.
-- [ ] **History/audit (§19):** who/what/before-after for record + field +
+- [x] **History/audit (§19):** who/what/before-after for record + field +
       automation + button + permission changes; guest actor attributed safely.
-- [ ] **Import/export (§20):** CSV import (schema mapping, validation, preview,
+- [x] **Import/export (§20):** CSV import (schema mapping, validation, preview,
       partial-error, dup strategy) + export. Never evaluate imported spreadsheet
       formulas as code; CSV-injection-safe export (neutralize leading =,+,-,@).
-- [ ] **Search (§21):** structured data participates in search, permission-
+- [x] **Search (§21):** structured data participates in search, permission-
       respecting; async index tolerates delete/permission-change (no stale leak).
-- [ ] **Mobile/UX (§22):** grid horizontal overflow, frozen primary column,
+- [x] **Mobile/UX (§22):** grid horizontal overflow, frozen primary column,
       narrow-screen record editing, view switching — not desktop-only.
-- [ ] **Security review (§26):** adversarial pass — SQLi, formula/expression
+- [x] **Security review (§26):** adversarial pass — SQLi, formula/expression
       injection, XSS, relation IDOR, hidden field/record access, cross-workspace
       relations, public-share escalation, automation abuse, webhook SSRF, formula
       DoS, deep dependency graphs, large-payload DoS, CSV injection, action
       privilege escalation, guest→member confusion. Every material finding →
       fix → regression test.
-- [ ] **No-regression (§27):** the existing editor/lists/shares/public-view/
+- [x] **No-regression (§27):** the existing editor/lists/shares/public-view/
       public-comment/guest-edit/permissions/notifications/upstream-boot/flags/
       clean-room suites all stay green each increment.
 
