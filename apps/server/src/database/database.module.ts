@@ -137,6 +137,35 @@ export class DatabaseModule implements OnApplicationBootstrap {
       // (mxd_migration) — see MXD-FORK.md.
       await this.migrationService.migrateMxdToLatest();
     }
+
+    // Fail-fast deploy invariant (MXD): if the data platform is enabled, its
+    // schema MUST be present. Boot runs migrateMxdToLatest above, so this only
+    // trips when the fork migrations did not run against this database (e.g. an
+    // env that skips boot migrations, or a schema/image mismatch). Turning that
+    // into a loud boot failure prevents the far worse alternative — a container
+    // that starts, passes a health check, then 500s the first time a data-
+    // platform request hits a table that was never created.
+    await this.verifyMxdSchema();
+  }
+
+  private async verifyMxdSchema(): Promise<void> {
+    if (!this.environmentService.isMxdDataPlatformEnabled()) return;
+    const row = await sql<{
+      present: string | null;
+    }>`select to_regclass('public.mxd_tables')::text as present`.execute(
+      this.db,
+    );
+    const present = row.rows?.[0]?.present;
+    if (!present) {
+      this.logger.error(
+        'MXD_DATA_PLATFORM_ENABLED is on but table mxd_tables is missing — ' +
+          'fork migrations (mxd_migration) have not been applied to this ' +
+          'database. Refusing to start. Run migrations or deploy with ' +
+          'NODE_ENV=production so boot applies them.',
+      );
+      process.exit(1);
+    }
+    this.logger.log('MXD data-platform schema verified (mxd_tables present)');
   }
 
   async establishConnection() {

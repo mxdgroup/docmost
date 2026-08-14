@@ -89,3 +89,51 @@ management UI/API) are built from documented behavior, not from EE source.
   excludes `listItem`/`taskItem` from its global Tab handler; note
   `packages/editor-ext/src/lib/table/table.ts:24` binds Tab→`sinkListItem` inside tables — a
   candidate interference source for the list-indent diagnosis (plan Unit 4).
+
+## Branch model (canonical, as of 2026-08-14)
+
+The MXD namespace is small; treat everything else on `origin` as inherited upstream.
+
+- **`upstream/main`** (remote `docmost/docmost`) — upstream tracking. We never base on it directly.
+- **`mxd-main`** — the **canonical MXD integration branch**. Everything accepted ships here. Based on
+  upstream tag `v0.95.0`. Branch-protected. This is the single deployable line.
+- **release tags** `v0.95.0-mxd.N` — production pins these by digest.
+- **origin has ~133 non-MXD branches** — these are upstream Docmost's own dev branches, copied into
+  `mxdgroup/docmost` when it forked `docmost/docmost` (prefixes `feat/*`, `fix/*`, and one-off names
+  like `hocuspocus4`, `mantine9`, `react19`, `base`/`base-kan`). **Do not delete them to shrink a
+  count** — they are upstream history, not unfinished MXD work.
+- Short-lived MXD feature branches use the `mxd/<topic>` prefix and are deleted once their content
+  lands in `mxd-main` (verify reachability first, not age).
+
+## Upstream reconciliation policy (why "N behind" is expected)
+
+We base on **stable tags, never raw `main`**. When `mxd-main` shows as *behind* `upstream/main`, that
+is by design if — and only if — the newest upstream **release tag** is the one we're on. As of
+2026-08-14 the newest upstream release is still `v0.95.0` (2026-07-03); the ~20 commits on
+`upstream/main` past it are **unreleased**, and include two in-flight majors (hocuspocus v4 collab,
+node 26 + pnpm 11) that a fork must adopt at a *tagged* boundary, not mid-stream. So we stay on
+`v0.95.0` and re-evaluate when upstream cuts the next release. Security-relevant items are pulled out
+of cycle regardless (e.g. axios ≥ 1.18.1). Do not "catch up to main" blindly; classify each
+release's commits per the Rebase loop above.
+
+## Data-platform v1 bounds (documented, deliberate)
+
+Verified/decided during the pre-deploy hardening pass; revisit before lifting:
+
+- **Automation fan-out** is bounded by a shared per-root-write budget (`MAX_AUTOMATION_WRITES`, see
+  `mxd-context.ts`) in addition to the depth guard — total automation-triggered writes from one user
+  write are capped, so branching can't amplify. A dispatch/listener failure never fails the committed
+  write (isolated in `emitChanged` + the executor).
+- **Multi-action rule atomicity**: cell mutations in a rule commit together (one patch); `createRecord`
+  spawns are best-effort in-order. A full multi-record transaction across services is deferred.
+- **CSV import** is a **bounded, synchronous, transactional batch** (`MAX_IMPORT_ROWS`): validated
+  rows insert via one chunked multi-row `insertMany` in a transaction; it does **not** run per-row
+  history or automations (that was the O(n²) fan-out). A background-job import is deferred.
+- **Filtered/sorted views**: `list()` and `MAX(position)` are index-served via
+  `(table_id, position)` (migration `20260814T120000`). A filter/sort on a dynamic jsonb cell
+  (`data ->> '<fieldId>'`) cannot use a btree and scans within the table's rows — acceptable at
+  internal scale; generated columns / per-field expression indexes are the future lever.
+- **autonumber** is backed by `position` (a sortable row number), not a dedicated monotonic sequence.
+- **Deploy invariant**: boot runs both migrators (`migrateToLatest` then `migrateMxdToLatest`) in
+  production, and refuses to start if `MXD_DATA_PLATFORM_ENABLED` is on but `mxd_tables` is absent —
+  a missing fork migration is a loud boot failure, never a delayed runtime 500.
