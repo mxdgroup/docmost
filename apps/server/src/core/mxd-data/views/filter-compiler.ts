@@ -21,6 +21,27 @@ const cellText = (fieldId: string) =>
 // (data -> $fieldId) — jsonb, for array/multi operators.
 const cellJson = (fieldId: string) => sql`(${sql.ref('data')} -> ${fieldId})`;
 
+// System field types are NOT stored in `data` — their values live in real
+// record columns. Map them to the column so filter/sort operate on the actual
+// value (review P1: previously these compiled to data ->> id, which is always
+// null, so filtering/sorting them was silently a no-op). The column name is a
+// fixed allowlist value (never client-supplied), cast to text so every operator
+// below behaves exactly as it does for a jsonb text cell.
+const SYSTEM_COLUMN: Record<string, string> = {
+  created_time: 'createdAt',
+  updated_time: 'updatedAt',
+  created_by: 'creatorId',
+  updated_by: 'updatedById',
+  autonumber: 'position',
+};
+// Text-valued cell expression for a field: a real column for system types,
+// otherwise the jsonb path. sql.ref + CamelCasePlugin maps createdAt ->
+// "created_at" for the identifier, matching the rest of the repo.
+const cellExpr = (field: MxdField) => {
+  const col = SYSTEM_COLUMN[field.type];
+  return col ? sql`(${sql.ref(col)})::text` : cellText(field.id);
+};
+
 function escapeLike(v: string): string {
   return v.replace(/([\\%_])/g, '\\$1');
 }
@@ -50,7 +71,7 @@ function compileCondition(
     throw new BadRequestException('Unknown filter field');
   }
   const isDate = DATE_TYPES.has(field.type);
-  const t = cellText(c.fieldId);
+  const t = cellExpr(field);
   const j = cellJson(c.fieldId);
   const v = c.value;
 
@@ -129,7 +150,7 @@ export function compileFilter(
 // Typed sort expression: numeric/date fields sort by their cast value, others by
 // text. fieldId is a bound param.
 export function sortExpr(field: MxdField): RawBuilder<unknown> {
-  const t = cellText(field.id);
+  const t = cellExpr(field);
   switch (field.type) {
     case 'number':
     case 'currency':

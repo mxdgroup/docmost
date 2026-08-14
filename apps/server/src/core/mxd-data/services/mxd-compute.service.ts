@@ -18,6 +18,36 @@ import {
 const MAX_COMPUTE_TARGETS = 1_000;
 const MAX_CONCAT_LEN = 50_000;
 
+// System field types: their value comes from the record's own columns, not from
+// stored cell data. Kept in sync with the filter compiler's SYSTEM_COLUMN map so
+// render and filter/sort agree. autonumber is backed by `position` (a stable,
+// sortable row number) as the documented v1 semantics — a dedicated monotonic
+// sequence is deferred (would need an additive column migration).
+const SYSTEM_FIELD_TYPES = new Set([
+  'created_time',
+  'updated_time',
+  'created_by',
+  'updated_by',
+  'autonumber',
+]);
+
+function systemFieldValue(type: string, r: MxdRecord): unknown {
+  switch (type) {
+    case 'created_time':
+      return r.createdAt ? new Date(r.createdAt as any).toISOString() : null;
+    case 'updated_time':
+      return r.updatedAt ? new Date(r.updatedAt as any).toISOString() : null;
+    case 'created_by':
+      return r.creatorId ?? r.creatorGuestName ?? null;
+    case 'updated_by':
+      return r.updatedById ?? null;
+    case 'autonumber':
+      return r.position ?? null;
+    default:
+      return null;
+  }
+}
+
 // MXD data platform — computed cells: lookups + rollups (roadmap §8/§33).
 // Derived on READ and merged transiently into record.data (never persisted), so
 // values are always fresh — no stale cached rollups. Batched across the record
@@ -45,8 +75,25 @@ export class MxdComputeService {
       (f) => f.type === 'lookup' || f.type === 'rollup',
     );
     const hasFormula = fields.some((f) => f.type === 'formula');
-    if ((computed.length === 0 && !hasFormula) || records.length === 0) {
+    const systemFields = fields.filter((f) => SYSTEM_FIELD_TYPES.has(f.type));
+    if (
+      (computed.length === 0 && !hasFormula && systemFields.length === 0) ||
+      records.length === 0
+    ) {
       return records;
+    }
+
+    // System fields (created_time/updated_time/created_by/updated_by/autonumber)
+    // are derived from the record's own columns, NOT stored in data. Populate
+    // them transiently on read so rendering matches what the filter compiler
+    // sorts/filters on (which maps these types to the same columns). Review P1.
+    if (systemFields.length > 0) {
+      for (const r of records) {
+        const data = r.data as any;
+        for (const sf of systemFields) {
+          data[sf.id] = systemFieldValue(sf.type, r);
+        }
+      }
     }
 
     const fieldsById = new Map(fields.map((f) => [f.id, f]));
