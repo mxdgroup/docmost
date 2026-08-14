@@ -2,11 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { RawBuilder, SqlBool, sql } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import { KyselyDB, KyselyTransaction } from '@docmost/db/types/kysely.types';
-import { dbOrTx } from '@docmost/db/utils';
+import { dbOrTx, executeTx } from '@docmost/db/utils';
 import {
   InsertableMxdRecord,
   MxdRecord,
 } from '@docmost/db/types/entity.types';
+
+// Multi-row INSERT chunk size for insertMany. Each row currently binds ~8
+// params, so 500 rows/chunk stays comfortably under Postgres's ~65535 bound
+// param limit per statement while keeping each round trip cheap.
+const INSERT_MANY_CHUNK = 500;
 
 // A pre-compiled ORDER BY term (the core view layer builds these from a
 // validated config via the filter-compiler; the repo just applies them).
@@ -39,6 +44,40 @@ export class MxdRecordRepo {
       .values(data)
       .returningAll()
       .executeTakeFirstOrThrow();
+  }
+
+  // Bulk-insert pre-validated rows in a single transaction, chunked to stay
+  // under the parameter-count limit of one INSERT statement. Used ONLY by the
+  // bounded CSV import path (MxdCsvService.importCsv) — it is a plain
+  // multi-row INSERT with no per-row history or automation fan-out, which is
+  // exactly the O(n) shortcut import needs instead of n calls to
+  // MxdRecordService.createRecord. Commits atomically: if any chunk fails, the
+  // whole transaction (and every row already inserted in this call) rolls
+  // back — callers never see a partial import from a DB-level failure. If a
+  // transaction is already open (`trx`), the inserts join it instead of
+  // opening a nested one.
+  async insertMany(
+    rows: InsertableMxdRecord[],
+    trx?: KyselyTransaction,
+  ): Promise<MxdRecord[]> {
+    if (rows.length === 0) return [];
+    return executeTx(
+      this.db,
+      async (tx) => {
+        const inserted: MxdRecord[] = [];
+        for (let i = 0; i < rows.length; i += INSERT_MANY_CHUNK) {
+          const chunk = rows.slice(i, i + INSERT_MANY_CHUNK);
+          const rowsInserted = await tx
+            .insertInto('mxdRecords')
+            .values(chunk)
+            .returningAll()
+            .execute();
+          inserted.push(...rowsInserted);
+        }
+        return inserted;
+      },
+      trx,
+    );
   }
 
   async findById(
