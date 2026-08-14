@@ -42,7 +42,9 @@ overrides:
   "brace-expansion@^5": 5.0.9
   "@xmldom/xmldom": 0.8.13
   handlebars: 4.7.9
-  axios: 1.18.0
+  # Security pickup from upstream (docmost/docmost main) while we stay based on
+  # the v0.95.0 tag — bump out of cycle rather than adopting unreleased main.
+  axios: 1.18.1
   langsmith: 0.7.0
   follow-redirects: 1.16.0
   protobufjs: 7.5.8
