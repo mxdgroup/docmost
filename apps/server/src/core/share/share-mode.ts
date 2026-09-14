@@ -36,3 +36,23 @@ export function shareModeAllows(
 ): boolean {
   return MODE_RANK[normalizeShareMode(mode)] >= MODE_RANK[required];
 }
+
+// Anonymous live (collab websocket) session a share grants, or null for none.
+// The single source of truth for both the token mint and websocket auth, and
+// consistent with guest-comment access: each mode rides its own kill switch.
+//   edit    + SHARE_EDIT_ENABLED           -> 'writable'
+//   comment + SHARE_GUEST_COMMENTS_ENABLED -> 'readonly' (to anchor comments)
+//   anything else                          -> null
+export function shareCollabSessionMode(
+  mode: string | null | undefined,
+  flags: { shareEditEnabled: boolean; guestCommentsEnabled: boolean },
+): 'writable' | 'readonly' | null {
+  switch (normalizeShareMode(mode)) {
+    case ShareMode.EDIT:
+      return flags.shareEditEnabled ? 'writable' : null;
+    case ShareMode.COMMENT:
+      return flags.guestCommentsEnabled ? 'readonly' : null;
+    default:
+      return null;
+  }
+}

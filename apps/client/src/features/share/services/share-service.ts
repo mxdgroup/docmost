@@ -54,8 +54,8 @@ export async function deleteShare(shareId: string): Promise<void> {
 export async function getShareCollabToken(
   shareId: string,
   pageId: string,
-): Promise<{ token: string }> {
-  const req = await api.post<{ token: string }>("/shares/collab-token", {
+): Promise<{ token: string; readOnly: boolean }> {
+  const req = await api.post<{ token: string; readOnly: boolean }>("/shares/collab-token", {
     shareId,
     pageId,
   });

@@ -32,8 +32,18 @@ import {
   mobileTableOfContentAsideAtom,
   tableOfContentAsideAtom,
 } from "@/features/share/atoms/sidebar-atom.ts";
-import { IconArrowsHorizontal, IconList } from "@tabler/icons-react";
-import { useToggleToc } from "@/features/share/hooks/use-toggle-toc.ts";
+import {
+  IconArrowsHorizontal,
+  IconList,
+  IconMessage,
+} from "@tabler/icons-react";
+import {
+  guestNameAtom,
+  shareAsideTabAtom,
+  shareCommentsContextAtom,
+} from "@/features/share/atoms/share-comments-atom";
+import { getGuestName } from "@/features/share/guest-identity";
+import SharedCommentsPanel from "@/features/share/components/shared-comments-panel";
 import classes from "./share.module.css";
 import {
   SearchControl,
@@ -41,7 +51,6 @@ import {
 } from "@/features/search/components/search-control.tsx";
 import { ShareSearchSpotlight } from "@/features/search/components/share-search-spotlight.tsx";
 import { shareSearchSpotlight } from "@/features/search/constants";
-import ShareBranding from '@/features/share/components/share-branding.tsx';
 import { MAIN_CONTENT_ID, SkipToMain } from "@/components/ui/skip-to-main.tsx";
 
 const MemoizedSharedTree = React.memo(SharedTree);
@@ -57,10 +66,33 @@ export default function ShareShell({
   const toggleMobile = useToggleSidebar(mobileSidebarAtom);
   const toggleDesktop = useToggleSidebar(desktopSidebarAtom);
 
-  const [tocOpened] = useAtom(tableOfContentAsideAtom);
-  const [mobileTocOpened] = useAtom(mobileTableOfContentAsideAtom);
-  const toggleTocMobile = useToggleToc(mobileTableOfContentAsideAtom);
-  const toggleToc = useToggleToc(tableOfContentAsideAtom);
+  const [tocOpened, setTocOpened] = useAtom(tableOfContentAsideAtom);
+  const [mobileTocOpened, setMobileTocOpened] = useAtom(
+    mobileTableOfContentAsideAtom,
+  );
+  // MXD: the aside hosts either the table of contents or, on commentable
+  // links, the comments panel. A header button re-targets or closes it.
+  const commentsContext = useAtomValue(shareCommentsContextAtom);
+  const [asideTab, setAsideTab] = useAtom(shareAsideTabAtom);
+  const setGuestNameAtom = useSetAtom(guestNameAtom);
+  const activeAsideTab = commentsContext ? asideTab : "toc";
+
+  useEffect(() => {
+    setGuestNameAtom(getGuestName());
+  }, [setGuestNameAtom]);
+
+  const toggleAside = (tab: "toc" | "comments", mobile: boolean) => {
+    const isOpen = mobile ? mobileTocOpened : tocOpened;
+    const setOpen = mobile ? setMobileTocOpened : setTocOpened;
+    if (isOpen && activeAsideTab === tab) {
+      setOpen(false);
+      return;
+    }
+    setAsideTab(tab);
+    setOpen(true);
+  };
+  const toggleTocMobile = () => toggleAside("toc", true);
+  const toggleToc = () => toggleAside("toc", false);
   const [fullWidth, setFullWidth] = useAtom(sharedPageFullWidthAtom);
   const [sidebarWidth, setSidebarWidth] = useAtom(sidebarWidthAtom);
   const [isResizing, setIsResizing] = useState(false);
@@ -138,7 +170,7 @@ export default function ShareShell({
         },
       })}
       aside={{
-        width: 300,
+        width: activeAsideTab === "comments" ? 360 : 300,
         breakpoint: "sm",
         collapsed: {
           mobile: !mobileTocOpened,
@@ -187,6 +219,43 @@ export default function ShareShell({
                 <Group hiddenFrom="sm">
                   <SearchMobileControl onSearch={shareSearchSpotlight.open} />
                 </Group>
+              )}
+
+              {commentsContext && (
+                <>
+                  <Tooltip label={t("Comments")} withArrow>
+                    <ActionIcon
+                      variant={
+                        mobileTocOpened && activeAsideTab === "comments"
+                          ? "light"
+                          : "default"
+                      }
+                      style={{ border: "none" }}
+                      onClick={() => toggleAside("comments", true)}
+                      hiddenFrom="sm"
+                      size="sm"
+                      aria-label={t("Comments")}
+                    >
+                      <IconMessage size={20} stroke={2} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label={t("Comments")} withArrow>
+                    <ActionIcon
+                      variant={
+                        tocOpened && activeAsideTab === "comments"
+                          ? "light"
+                          : "default"
+                      }
+                      style={{ border: "none" }}
+                      onClick={() => toggleAside("comments", false)}
+                      visibleFrom="sm"
+                      size="sm"
+                      aria-label={t("Comments")}
+                    >
+                      <IconMessage size={20} stroke={2} />
+                    </ActionIcon>
+                  </Tooltip>
+                </>
               )}
 
               <Tooltip label={t("Table of contents")} withArrow>
@@ -248,7 +317,6 @@ export default function ShareShell({
       <AppShell.Main id={MAIN_CONTENT_ID} tabIndex={-1}>
         {children}
 
-        {data && shareId && !(data.features?.length > 0) && <ShareBranding />}
       </AppShell.Main>
 
       <AppShell.Aside
@@ -256,13 +324,21 @@ export default function ShareShell({
         withBorder={mobileTocOpened}
         className={classes.aside}
       >
-        <ScrollArea style={{ height: "80vh" }} scrollbarSize={5} type="scroll">
-          <div style={{ paddingBottom: "50px" }}>
-            {readOnlyEditor && (
-              <TableOfContents isShare={true} editor={readOnlyEditor} />
-            )}
-          </div>
-        </ScrollArea>
+        {activeAsideTab === "comments" && commentsContext ? (
+          <SharedCommentsPanel
+            key={`${commentsContext.shareId}:${commentsContext.pageId}`}
+            shareId={commentsContext.shareId}
+            pageId={commentsContext.pageId}
+          />
+        ) : (
+          <ScrollArea style={{ height: "80vh" }} scrollbarSize={5} type="scroll">
+            <div style={{ paddingBottom: "50px" }}>
+              {readOnlyEditor && (
+                <TableOfContents isShare={true} editor={readOnlyEditor} />
+              )}
+            </div>
+          </ScrollArea>
+        )}
       </AppShell.Aside>
 
       <ShareSearchSpotlight shareId={shareId} />

@@ -5,7 +5,12 @@ import {
   prosemirrorNodeToYElement,
   tiptapExtensions,
 } from './collaboration.util';
-import { setYjsMark, updateYjsMarkAttribute, YjsSelection } from './yjs.util';
+import {
+  removeYjsMarkByAttribute,
+  setYjsMark,
+  updateYjsMarkAttribute,
+  YjsSelection,
+} from './yjs.util';
 import * as Y from 'yjs';
 import { User } from '@docmost/db/types/entity.types';
 
@@ -72,6 +77,26 @@ export class CollaborationHandler {
               { name: 'commentId', value: commentId },
               { resolved },
             );
+          },
+        );
+      },
+      // MXD: server-side highlight removal for deletes made by clients with no
+      // editable editor (anonymous share guests on a read-only connection).
+      unsetCommentMark: async (
+        documentName: string,
+        payload: {
+          commentId: string;
+          user: User | null;
+        },
+      ) => {
+        const { commentId, user } = payload;
+        await this.withYdocConnection(
+          hocuspocus,
+          documentName,
+          { user },
+          (doc) => {
+            const fragment = doc.getXmlFragment('default');
+            removeYjsMarkByAttribute(fragment, 'comment', 'commentId', commentId);
           },
         );
       },

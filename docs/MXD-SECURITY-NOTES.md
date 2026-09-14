@@ -20,6 +20,23 @@ return 403).
 - **Guest comment** (`@Public()` endpoints under `/shares/comments`): gated by
   `validateGuestCommentAccess` (same ladder as the mint path); body content is
   sanitized server-side against an allowlist before persistence.
+- **Read-only share session** (2026-09-14): a `comment`-mode share can mint the
+  same `SHARE_COLLAB` token, but ws auth derives the session capability from the
+  share's *current* mode and flags (`shareCollabSessionMode`) and sets
+  `connectionConfig.readOnly` for comment shares — the token never carries
+  capability. Guests use the live doc only to anchor inline comments (Yjs
+  relative positions). Verified adversarially: a hand-built provider on a
+  comment-share token writes locally, the server drops it; the same write on an
+  edit share lands (control).
+- **Guest comment ownership**: edit/delete of a guest comment requires the
+  per-comment secret returned once at create time. Only a sha256 hash is stored,
+  in `mxd_guest_comment_tokens` (NOT on `comments`, whose rows are
+  `selectAll`-ed into public responses); compared with `timingSafeEqual`. Member
+  comments have no token, so guests can never edit/delete them.
+- **Guest resolve** (`/shares/comments/resolve`): any guest on a commentable
+  link can resolve/re-open any top-level thread on pages the share covers
+  (product decision). Every guest action re-runs `validateGuestCommentAccess`
+  against the comment's *own* page, never a client-supplied page id.
 - Both surfaces are per-IP throttled (`share-public` throttler). This assumes
   the deployment sits behind a single trusted reverse proxy that overwrites
   `X-Forwarded-For` — our Caddy front does. See residual risks.
@@ -71,3 +88,11 @@ understand:
    page, including staff-authored ones, to anonymous visitors — intended for
    the thread view, but means internal comment content on a shared page is
    public. Only share pages whose full comment thread is safe to expose.
+   **Since 2026-09-14 this applies to every share by default**: new links are
+   created as `comment` and a one-off migration lifted all existing `view`
+   links to `comment`. Lower a link to "Can view" (page ⋯ → Public link access)
+   if the page carries internal-only comment threads.
+6. **Guest ownership is browser-held.** Losing local storage loses the ability
+   to edit/delete one's own guest comments (they remain; a space admin can
+   delete them). Anyone with the link can resolve threads — resolution is a
+   workflow signal, not an access control.

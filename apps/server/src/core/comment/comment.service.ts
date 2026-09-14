@@ -19,6 +19,11 @@ import { QueueJob, QueueName } from '../../integrations/queue/constants';
 import { extractUserMentionIdsFromJson } from '../../common/helpers/prosemirror/utils';
 import { ICommentNotificationJob } from '../../integrations/queue/constants/queue.interface';
 import { WsService } from '../../ws/ws.service';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+
+function hashGuestToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
 
 @Injectable()
 export class CommentService {
@@ -148,8 +153,13 @@ export class CommentService {
   // MXD: anonymous comment on a shared page. Content arrives ALREADY
   // sanitized by the share layer's allowlist (which also strips mention
   // nodes, so guests can't trigger mention notifications). No user: no
-  // watcher registration, no comment mark in the ydoc, no mention jobs —
-  // only the reply notification to the parent author and page watchers.
+  // watcher registration, no mention jobs — only the reply notification to the
+  // parent author and page watchers. An inline comment (yjsSelection) gets its
+  // highlight applied server-side, the same path read-only members use.
+  //
+  // Returns the one-time ownership secret alongside the comment: the posting
+  // browser keeps it to edit/delete this comment later; only its hash is
+  // stored.
   async createGuestComment(
     opts: {
       page: Page;
@@ -157,8 +167,13 @@ export class CommentService {
       guestName: string;
       sanitizedContent: any;
     },
-    dto: { parentCommentId?: string; selection?: string; type?: string },
-  ) {
+    dto: {
+      parentCommentId?: string;
+      selection?: string;
+      type?: string;
+      yjsSelection?: unknown;
+    },
+  ): Promise<{ comment: Comment; guestToken: string }> {
     const { page, workspaceId, guestName, sanitizedContent } = opts;
 
     if (dto.parentCommentId) {
@@ -173,17 +188,30 @@ export class CommentService {
       }
     }
 
+    // Only a top-level comment can anchor to a text selection.
+    const isInline = !dto.parentCommentId && !!dto.yjsSelection;
+
     const inserted = await this.commentRepo.insertComment({
       pageId: page.id,
       content: sanitizedContent,
-      selection: dto?.selection?.substring(0, 250) ?? null,
-      type: dto.type ?? 'page',
+      selection: isInline ? (dto.selection?.substring(0, 250) ?? null) : null,
+      type: isInline ? 'inline' : 'page',
       parentCommentId: dto?.parentCommentId,
       creatorId: null,
       guestName,
       workspaceId,
       spaceId: page.spaceId,
     });
+
+    const guestToken = randomBytes(32).toString('base64url');
+    await this.commentRepo.insertGuestCommentToken(
+      inserted.id,
+      hashGuestToken(guestToken),
+    );
+
+    if (isInline) {
+      await this.applyCommentMark(page.id, inserted.id, dto.yjsSelection, null);
+    }
 
     const comment = await this.commentRepo.findById(inserted.id, {
       includeCreator: true,
@@ -209,7 +237,154 @@ export class CommentService {
       comment,
     });
 
-    return comment;
+    return { comment, guestToken };
+  }
+
+  // MXD: true only when `guestToken` is the ownership secret minted for this
+  // guest comment. Member comments never have one, so guests can't touch them.
+  async isGuestCommentOwner(
+    comment: Comment,
+    guestToken: string | undefined,
+  ): Promise<boolean> {
+    if (comment.creatorId !== null || !guestToken) return false;
+    const storedHash = await this.commentRepo.findGuestCommentTokenHash(
+      comment.id,
+    );
+    if (!storedHash) return false;
+    const a = Buffer.from(storedHash);
+    const b = Buffer.from(hashGuestToken(guestToken));
+    return a.length === b.length && timingSafeEqual(a, b);
+  }
+
+  async updateGuestComment(
+    comment: Comment,
+    sanitizedContent: any,
+  ): Promise<Comment> {
+    const editedAt = new Date();
+    await this.commentRepo.updateComment(
+      { content: sanitizedContent, editedAt, updatedAt: editedAt },
+      comment.id,
+    );
+    const updated = await this.commentRepo.findById(comment.id, {
+      includeCreator: true,
+      includeResolvedBy: true,
+    });
+    this.wsService.emitCommentEvent(comment.spaceId, comment.pageId, {
+      operation: 'commentUpdated',
+      pageId: comment.pageId,
+      comment: updated,
+    });
+    return updated;
+  }
+
+  async deleteGuestComment(comment: Comment): Promise<void> {
+    // A guest's read-only editor can't remove the highlight itself, so the
+    // server does it before the row (and its replies, via FK cascade) goes.
+    if (!comment.parentCommentId && comment.type === 'inline') {
+      try {
+        await this.collaborationGateway.handleYjsEvent(
+          'unsetCommentMark',
+          `page.${comment.pageId}`,
+          { commentId: comment.id, user: null },
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to remove comment mark for comment ${comment.id}`,
+          error,
+        );
+      }
+    }
+    await this.commentRepo.deleteComment(comment.id);
+    this.wsService.emitCommentEvent(comment.spaceId, comment.pageId, {
+      operation: 'commentDeleted',
+      pageId: comment.pageId,
+      commentId: comment.id,
+    });
+  }
+
+  // MXD: fork-owned thread resolution (the upstream feature is EE-licensed and
+  // unlicensed on this deployment). Shared by members and share guests: a
+  // member resolves as `user`, a guest as `guestName`. Updates the row, flips
+  // the highlight's `resolved` attribute in the ydoc, and broadcasts.
+  async resolveComment(
+    comment: Comment,
+    resolved: boolean,
+    actor: { user?: User; guestName?: string },
+  ): Promise<Comment> {
+    if (comment.parentCommentId) {
+      throw new BadRequestException('Only top-level comments can be resolved');
+    }
+
+    const now = new Date();
+    await this.commentRepo.updateComment(
+      resolved
+        ? {
+            resolvedAt: now,
+            resolvedById: actor.user?.id ?? null,
+            resolvedByGuestName: actor.user ? null : (actor.guestName ?? null),
+            updatedAt: now,
+          }
+        : {
+            resolvedAt: null,
+            resolvedById: null,
+            resolvedByGuestName: null,
+            updatedAt: now,
+          },
+      comment.id,
+    );
+
+    if (comment.type === 'inline') {
+      try {
+        await this.collaborationGateway.handleYjsEvent(
+          'resolveCommentMark',
+          `page.${comment.pageId}`,
+          { commentId: comment.id, resolved, user: actor.user ?? null },
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to update comment mark for comment ${comment.id}`,
+          error,
+        );
+      }
+    }
+
+    const updated = await this.commentRepo.findById(comment.id, {
+      includeCreator: true,
+      includeResolvedBy: true,
+    });
+    this.wsService.emitCommentEvent(comment.spaceId, comment.pageId, {
+      operation: 'commentResolved',
+      pageId: comment.pageId,
+      comment: updated,
+    });
+    return updated;
+  }
+
+  private async applyCommentMark(
+    pageId: string,
+    commentId: string,
+    yjsSelection: unknown,
+    user: User | null,
+  ): Promise<void> {
+    const parsed = yjsSelectionSchema.safeParse(yjsSelection);
+    if (!parsed.success) {
+      this.logger.warn(
+        `Invalid yjsSelection for comment ${commentId}: ${parsed.error.message}`,
+      );
+      return;
+    }
+    try {
+      await this.collaborationGateway.handleYjsEvent(
+        'setCommentMark',
+        `page.${pageId}`,
+        { yjsSelection: parsed.data, commentId, resolved: false, user },
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to apply comment mark for comment ${commentId}, comment saved without inline highlight`,
+        error,
+      );
+    }
   }
 
   async findByPageId(
