@@ -19,11 +19,11 @@ origin: docs/plans/2026-08-09-001-feat-mxd-data-platform-plan.md
 > two-phase plan below.
 >
 > What actually happened, with evidence, is recorded in the ops repo
-> (`mxdgroup/mxdcompass_mostdocs`): `docs/deploy/DEPLOY-RECORD-2026-08-14-mxd.4.md`,
+> (`mxdgroup/mxdcompass_docmost`): `docs/deploy/DEPLOY-RECORD-2026-08-14-mxd.4.md`,
 > `DEPLOY-RECORD-2026-08-14-mxd.5.md`, and `docs/deploy/ACCESS.md`. Use those. This document is
 > kept only for the reasoning it captures (rollback eras, dark-launch rationale, migration safety).
 
-**Target repos:** `mxdgroup/docmost` (this repo — code, tags, image) and `mxdgroup/mxdcompass_mostdocs` (the ops repo — `docker-compose.yml`, `migration/docmost_import.py`, the `08-upgrade-rollback.md` runbook). Paths below are repo-relative to `mxdgroup/docmost` unless prefixed `ops:`.
+**Target repos:** `mxdgroup/docmost` (this repo — code, tags, image) and `mxdgroup/mxdcompass_docmost` (the ops repo — `docker-compose.yml`, `migration/docmost_import.py`, the `08-upgrade-rollback.md` runbook). Paths below are repo-relative to `mxdgroup/docmost` unless prefixed `ops:`.
 
 ## Overview
 
@@ -216,7 +216,7 @@ flowchart TD
 
 **Approach:**
 - SSH to the box (`deploy@65.108.254.137`; the key is **not** on the planning machine — obtaining it is a hard prerequisite). Capture: running image digest/tag, `docker compose ps`, Postgres version + DB size, disk headroom, attachment storage location (disk/volume vs S3), latest backup age + restore-tested-ness, Redis role.
-- Clone/pull `mxdgroup/mxdcompass_mostdocs`; read the `08` runbook end to end; note any drift from `MXD-FORK.md`.
+- Clone/pull `mxdgroup/mxdcompass_docmost`; read the `08` runbook end to end; note any drift from `MXD-FORK.md`.
 - Confirm a **known-good restore path** exists (a backup you've actually restored on staging, not just a dump that exists).
 
 **Test scenarios (verification checks):**
@@ -454,5 +454,5 @@ flowchart TD
 - **CI promote pipeline:** `.github/workflows/mxd-image.yml`
 - **Migrators:** `apps/server/src/database/migrate-mxd.ts`, `apps/server/src/database/services/migration.service.ts`, `apps/server/src/database/database.module.ts`
 - **Flags + config injection:** `apps/server/src/integrations/environment/environment.service.ts:220-234`, `apps/server/src/integrations/static/static.module.ts:31-57`
-- **Ops repo:** `mxdgroup/mxdcompass_mostdocs` — `ops:docker-compose.yml`, `ops:migration/docmost_import.py`, `ops:docs/plans/08-upgrade-rollback.md`
+- **Ops repo:** `mxdgroup/mxdcompass_docmost` — `ops:docker-compose.yml`, `ops:migration/docmost_import.py`, `ops:docs/plans/08-upgrade-rollback.md`
 - **Prod:** `docs.mxd.digital`, Hetzner `65.108.254.137`, `deploy@` (SSH key not on the planning machine)
