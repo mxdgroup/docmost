@@ -213,6 +213,7 @@ export interface Comments {
   parentCommentId: string | null;
   resolvedAt: Timestamp | null;
   resolvedById: string | null;
+  resolvedByGuestName: string | null;
   selection: string | null;
   spaceId: string;
   type: string | null;
@@ -742,6 +743,12 @@ export interface MxdForms {
   workspaceId: string;
 }
 
+export interface MxdGuestCommentTokens {
+  commentId: string;
+  createdAt: Generated<Timestamp>;
+  tokenHash: string;
+}
+
 export interface MxdRecordHistory {
   action: string;
   actorGuestName: string | null;
@@ -783,6 +790,7 @@ export interface DB {
   mxdAutomationRuns: MxdAutomationRuns;
   mxdRecordHistory: MxdRecordHistory;
   mxdForms: MxdForms;
+  mxdGuestCommentTokens: MxdGuestCommentTokens;
   notifications: Notifications;
   pageAccess: PageAccess;
   pageTransclusionReferences: PageTransclusionReferences;

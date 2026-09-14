@@ -65,7 +65,33 @@ const workspaceId = '00000000-0000-0000-0000-000000000003';
 const authUserId = '00000000-0000-0000-0000-000000000004';
 
 describe('ShareService share mode', () => {
-  it('creates a view share by default (no mode given)', async () => {
+  it('creates a comment share by default when guest comments are on', async () => {
+    const { service, shareRepo } = buildService({ guestCommentsEnabled: true });
+    await service.createShare({
+      authUserId,
+      workspaceId,
+      page,
+      createShareDto: { pageId: page.id } as any,
+    });
+    expect(shareRepo.insertShare).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: ShareMode.COMMENT }),
+    );
+  });
+
+  it('an explicit view mode is honored even when guest comments are on', async () => {
+    const { service, shareRepo } = buildService({ guestCommentsEnabled: true });
+    await service.createShare({
+      authUserId,
+      workspaceId,
+      page,
+      createShareDto: { pageId: page.id, mode: 'view' } as any,
+    });
+    expect(shareRepo.insertShare).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: ShareMode.VIEW }),
+    );
+  });
+
+  it('creates a view share by default when guest comments are off', async () => {
     const { service, shareRepo } = buildService({});
     await service.createShare({
       authUserId,
@@ -153,7 +179,7 @@ describe('ShareService.mintShareCollabToken', () => {
       pageById: livePage,
     });
     const result = await service.mintShareCollabToken('sh-1', page.id, wsId);
-    expect(result).toEqual({ token: 'signed-token' });
+    expect(result).toEqual({ token: 'signed-token', readOnly: false });
     expect(tokenService.generateShareCollabToken).toHaveBeenCalledWith({
       shareId: 'sh-1',
       pageId: page.id,
@@ -173,10 +199,11 @@ describe('ShareService.mintShareCollabToken', () => {
     expect(tokenService.generateShareCollabToken).not.toHaveBeenCalled();
   });
 
-  it('403 for view/comment shares; 404 for missing/deleted/foreign shares', async () => {
-    for (const mode of ['view', 'comment', null]) {
+  it('403 for view shares; 404 for missing/deleted/foreign shares', async () => {
+    for (const mode of ['view', null]) {
       const { service } = buildService({
         shareEditEnabled: true,
+        guestCommentsEnabled: true,
         shareById: { ...editShare, mode },
         pageById: livePage,
       });
@@ -198,6 +225,30 @@ describe('ShareService.mintShareCollabToken', () => {
         service.mintShareCollabToken('sh-1', page.id, wsId),
       ).rejects.toBeInstanceOf(NotFoundException);
     }
+  });
+
+  it('mints a read-only token for a comment share when guest comments are on', async () => {
+    const { service, tokenService } = buildService({
+      guestCommentsEnabled: true,
+      shareById: { ...editShare, mode: 'comment' },
+      pageById: livePage,
+    });
+    const result = await service.mintShareCollabToken('sh-1', page.id, wsId);
+    expect(result).toEqual({ token: 'signed-token', readOnly: true });
+    expect(tokenService.generateShareCollabToken).toHaveBeenCalled();
+  });
+
+  it('403 for a comment share when guest comments are off', async () => {
+    const { service, tokenService } = buildService({
+      shareEditEnabled: true,
+      guestCommentsEnabled: false,
+      shareById: { ...editShare, mode: 'comment' },
+      pageById: livePage,
+    });
+    await expect(
+      service.mintShareCollabToken('sh-1', page.id, wsId),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tokenService.generateShareCollabToken).not.toHaveBeenCalled();
   });
 
   it('403 when the page is outside the share scope or restricted', async () => {

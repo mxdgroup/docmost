@@ -29,6 +29,7 @@ import { TransclusionLookup } from '../page/transclusion/transclusion.types';
 import {
   ShareMode,
   normalizeShareMode,
+  shareCollabSessionMode,
   shareModeAllows,
 } from './share-mode';
 import { EnvironmentService } from '../../integrations/environment/environment.service';
@@ -66,6 +67,15 @@ export class ShareService {
     ) {
       throw new ForbiddenException('Guest comments are disabled');
     }
+  }
+
+  // MXD: a link shared with a client is commentable unless the sharer lowers
+  // it. The (EE) Share dialog creates shares without a mode, so this default
+  // is what nearly every new link gets. Falls back to view with the flag off.
+  private defaultShareMode(): ShareMode {
+    return this.environmentService.isShareGuestCommentsEnabled()
+      ? ShareMode.COMMENT
+      : ShareMode.VIEW;
   }
 
   async getShareTree(shareId: string, workspaceId: string) {
@@ -114,7 +124,10 @@ export class ShareService {
         pageId: page.id,
         includeSubPages: createShareDto.includeSubPages ?? false,
         searchIndexing: createShareDto.searchIndexing ?? false,
-        mode: normalizeShareMode(createShareDto.mode),
+        mode:
+          createShareDto.mode === undefined
+            ? this.defaultShareMode()
+            : normalizeShareMode(createShareDto.mode),
         creatorId: authUserId,
         spaceId: page.spaceId,
         workspaceId,
@@ -151,22 +164,27 @@ export class ShareService {
   // MXD: mint a share-scoped anonymous collab token. Every gate re-checked
   // here is re-validated again at websocket auth (defense in depth) via the
   // same shareRepo.isPageWithinShareScope — one authoritative scope check.
+  //
+  // Edit shares get a writable session. Comment shares get a READ-ONLY session
+  // (enforced at websocket auth, not trusted from here): guests need the live
+  // ydoc to anchor inline comments to a text selection, never to write.
   async mintShareCollabToken(
     shareIdOrKey: string,
     pageId: string,
     workspaceId: string,
-  ): Promise<{ token: string }> {
-    if (!this.environmentService.isShareEditEnabled()) {
-      throw new ForbiddenException('Editable public links are disabled');
-    }
-
+  ): Promise<{ token: string; readOnly: boolean }> {
     const share = await this.shareRepo.findById(shareIdOrKey);
     if (!share || share.workspaceId !== workspaceId || share.deletedAt) {
       throw new NotFoundException('Share not found');
     }
 
-    if (normalizeShareMode(share.mode) !== ShareMode.EDIT) {
-      throw new ForbiddenException('This link is not editable');
+    const mode = shareCollabSessionMode(share.mode, {
+      shareEditEnabled: this.environmentService.isShareEditEnabled(),
+      guestCommentsEnabled:
+        this.environmentService.isShareGuestCommentsEnabled(),
+    });
+    if (!mode) {
+      throw new ForbiddenException('This link does not allow live access');
     }
 
     const sharingAllowed = await this.isSharingAllowed(
@@ -199,7 +217,7 @@ export class ShareService {
       pageId: page.id,
       workspaceId,
     });
-    return { token };
+    return { token, readOnly: mode === 'readonly' };
   }
 
   // MXD: shared gatekeeper for guest comment read/write on a shared page.

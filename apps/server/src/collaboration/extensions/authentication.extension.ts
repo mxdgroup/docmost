@@ -20,10 +20,7 @@ import {
   JwtType,
 } from '../../core/auth/dto/jwt-payload';
 import { ShareRepo } from '@docmost/db/repos/share/share.repo';
-import {
-  ShareMode,
-  normalizeShareMode,
-} from '../../core/share/share-mode';
+import { shareCollabSessionMode } from '../../core/share/share-mode';
 import { EnvironmentService } from '../../integrations/environment/environment.service';
 
 @Injectable()
@@ -143,10 +140,6 @@ export class AuthenticationExtension implements Extension {
       throw new UnauthorizedException('Invalid collab token');
     }
 
-    if (!this.environmentService.isShareEditEnabled()) {
-      throw new UnauthorizedException('Editable public links are disabled');
-    }
-
     // The token is scoped to one page at mint time; the ws document must be
     // that page. This blocks replay of a token against sibling documents.
     if (payload.pageId !== pageId) {
@@ -160,11 +153,22 @@ export class AuthenticationExtension implements Extension {
     if (
       !share ||
       share.deletedAt ||
-      share.workspaceId !== payload.workspaceId ||
-      normalizeShareMode(share.mode) !== ShareMode.EDIT
+      share.workspaceId !== payload.workspaceId
     ) {
-      // Revoked, downgraded, or deleted shares cut off editors here on the
-      // next (re)connect — acceptable staleness = token TTL (10m).
+      throw new UnauthorizedException();
+    }
+
+    // The session capability comes from the share's CURRENT mode and flags,
+    // never from the token: edit -> writable, comment -> read-only (guests
+    // need the live doc only to anchor inline comments). Revoked, downgraded,
+    // or flag-disabled shares cut off sessions on the next (re)connect —
+    // acceptable staleness = token TTL (10m).
+    const sessionMode = shareCollabSessionMode(share.mode, {
+      shareEditEnabled: this.environmentService.isShareEditEnabled(),
+      guestCommentsEnabled:
+        this.environmentService.isShareGuestCommentsEnabled(),
+    });
+    if (!sessionMode) {
       throw new UnauthorizedException();
     }
 
@@ -206,8 +210,12 @@ export class AuthenticationExtension implements Extension {
       throw new UnauthorizedException();
     }
 
+    if (sessionMode === 'readonly') {
+      data.connectionConfig.readOnly = true;
+    }
+
     this.logger.debug(
-      `Anonymous share editor authenticated: share=${share.id} page=${pageId}`,
+      `Anonymous share session authenticated (${sessionMode}): share=${share.id} page=${pageId}`,
     );
 
     return {

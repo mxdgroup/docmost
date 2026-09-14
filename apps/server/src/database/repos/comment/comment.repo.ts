@@ -91,6 +91,27 @@ export class CommentRepo {
     ).as('resolvedBy');
   }
 
+  // MXD: guest ownership secret (hash only) for edit/delete of a guest comment.
+  // Kept out of `comments` so selectAll-based responses never carry it.
+  async insertGuestCommentToken(
+    commentId: string,
+    tokenHash: string,
+  ): Promise<void> {
+    await this.db
+      .insertInto('mxdGuestCommentTokens')
+      .values({ commentId, tokenHash })
+      .execute();
+  }
+
+  async findGuestCommentTokenHash(commentId: string): Promise<string | null> {
+    const row = await this.db
+      .selectFrom('mxdGuestCommentTokens')
+      .select('tokenHash')
+      .where('commentId', '=', commentId)
+      .executeTakeFirst();
+    return row?.tokenHash ?? null;
+  }
+
   async deleteComment(commentId: string): Promise<void> {
     await this.db.deleteFrom('comments').where('id', '=', commentId).execute();
   }

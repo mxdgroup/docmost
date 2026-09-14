@@ -11,6 +11,7 @@ const DOC = `page.${PAGE}`;
 
 function build(opts: {
   flag?: boolean;
+  commentFlag?: boolean;
   share?: any;
   page?: any;
   inScope?: boolean;
@@ -55,6 +56,9 @@ function build(opts: {
   };
   const environmentService = {
     isShareEditEnabled: jest.fn().mockReturnValue(opts.flag ?? true),
+    isShareGuestCommentsEnabled: jest
+      .fn()
+      .mockReturnValue(opts.commentFlag ?? true),
   };
   const ext = new AuthenticationExtension(
     tokenService as any,
@@ -145,8 +149,8 @@ describe('AuthenticationExtension share-collab branch', () => {
     expect(shareRepo.findById).not.toHaveBeenCalled();
   });
 
-  it('rejects view- and comment-mode shares', async () => {
-    for (const mode of ['view', 'comment', null]) {
+  it('rejects view-mode (and legacy null-mode) shares', async () => {
+    for (const mode of ['view', null]) {
       const { ext } = build({
         tokenPayload: validPayload,
         share: { ...editShare, mode },
@@ -155,6 +159,51 @@ describe('AuthenticationExtension share-collab branch', () => {
         UnauthorizedException,
       );
     }
+  });
+
+  it('comment share → anonymous READ-ONLY session (for anchoring comments)', async () => {
+    const { ext } = build({
+      tokenPayload: validPayload,
+      share: { ...editShare, mode: 'comment' },
+      flag: false, // the edit flag is irrelevant to comment shares
+    });
+    const data = payloadFor();
+    const result = await ext.onAuthenticate(data);
+    expect(result.user).toBeNull();
+    expect(data.connectionConfig.readOnly).toBe(true);
+  });
+
+  it('comment share is rejected when guest comments are disabled', async () => {
+    const { ext } = build({
+      tokenPayload: validPayload,
+      share: { ...editShare, mode: 'comment' },
+      commentFlag: false,
+    });
+    await expect(ext.onAuthenticate(payloadFor())).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
+  it('edit share never falls back to read-only when only guest comments are on', async () => {
+    const { ext } = build({
+      tokenPayload: validPayload,
+      share: editShare,
+      flag: false,
+      commentFlag: true,
+    });
+    await expect(ext.onAuthenticate(payloadFor())).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
+  it('a share downgraded from edit to comment reconnects read-only', async () => {
+    const { ext } = build({
+      tokenPayload: validPayload, // token minted while the share was edit
+      share: { ...editShare, mode: 'comment' },
+    });
+    const data = payloadFor();
+    await ext.onAuthenticate(data);
+    expect(data.connectionConfig.readOnly).toBe(true);
   });
 
   it('rejects deleted or missing shares (revocation cuts off on reconnect)', async () => {

@@ -14,7 +14,10 @@ RUN pnpm build
 
 FROM base AS installer
 
+# MXD: `apt-get upgrade` pulls Debian security fixes newer than the node base
+# image (e.g. libpcre2 deb12u1) so the pre-push Trivy gate isn't blocked on them.
 RUN apt-get update \
+  && apt-get upgrade -y --no-install-recommends \
   && apt-get install -y --no-install-recommends curl bash \
   && rm -rf /var/lib/apt/lists/*
 

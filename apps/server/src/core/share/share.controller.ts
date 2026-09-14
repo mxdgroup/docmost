@@ -13,7 +13,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthUser } from '../../common/decorators/auth-user.decorator';
-import { User, Workspace } from '@docmost/db/types/entity.types';
+import { Comment, User, Workspace } from '@docmost/db/types/entity.types';
+import { CommentRepo } from '@docmost/db/repos/comment/comment.repo';
 import { AuthWorkspace } from '../../common/decorators/auth-workspace.decorator';
 import { ShareService } from './share.service';
 import {
@@ -21,6 +22,9 @@ import {
   ShareCollabTokenDto,
   ShareCommentsListDto,
   ShareGuestCommentDto,
+  ShareGuestCommentOwnedDto,
+  ShareGuestCommentResolveDto,
+  ShareGuestCommentUpdateDto,
   ShareIdDto,
   ShareInfoDto,
   SharePageIdDto,
@@ -53,6 +57,7 @@ export class ShareController {
   constructor(
     private readonly shareService: ShareService,
     private readonly commentService: CommentService,
+    private readonly commentRepo: CommentRepo,
     private readonly shareRepo: ShareRepo,
     private readonly pageRepo: PageRepo,
     private readonly pagePermissionRepo: PagePermissionRepo,
@@ -171,7 +176,8 @@ export class ShareController {
 
   // MXD: guest comment creation. Body content passes the restricted
   // allowlist (no embeds/raw HTML/mentions; http(s) links only) before it
-  // ever reaches the comment service.
+  // ever reaches the comment service. Returns the comment plus a one-time
+  // `guestToken` the browser keeps to edit/delete it later.
   @Public()
   @UseGuards(ThrottlerGuard)
   @Throttle({ [SHARE_PUBLIC_THROTTLER]: { ttl: 60_000, limit: 10 } })
@@ -188,38 +194,118 @@ export class ShareController {
       workspace.id,
     );
 
-    let parsed: any;
-    try {
-      parsed = JSON.parse(dto.content);
-    } catch {
-      throw new BadRequestException('Invalid comment content');
-    }
-    const sanitized = sanitizeGuestCommentContent(parsed);
-    if (!sanitized) {
-      throw new BadRequestException('Comment content is empty or not allowed');
-    }
+    const sanitized = parseGuestContent(dto.content);
+    const guestName = parseGuestName(dto.guestName);
 
-    const guestName = dto.guestName.trim().slice(0, 50);
-    if (!guestName) {
-      throw new BadRequestException('Display name is required');
-    }
+    const { comment, guestToken } =
+      await this.commentService.createGuestComment(
+        {
+          page,
+          workspaceId: workspace.id,
+          guestName,
+          sanitizedContent: sanitized,
+        },
+        {
+          parentCommentId: dto.parentCommentId,
+          selection: dto.selection,
+          yjsSelection: dto.yjsSelection,
+        },
+      );
 
-    const comment = await this.commentService.createGuestComment(
-      {
-        page,
-        workspaceId: workspace.id,
-        guestName,
-        sanitizedContent: sanitized,
-      },
-      { parentCommentId: dto.parentCommentId },
-    );
-
-    const ip = String(req?.ip ?? '').replace(/[.:][^.:]*$/, '.x');
     this.logger.log(
-      `guest comment created: share=${dto.shareId} page=${dto.pageId} comment=${comment.id} ip=${ip}`,
+      `guest comment created: share=${dto.shareId} page=${dto.pageId} comment=${comment.id} ip=${truncatedIp(req)}`,
     );
 
+    return { ...comment, guestToken };
+  }
+
+  // MXD: a guest edits a comment it created (proven by its guestToken).
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ [SHARE_PUBLIC_THROTTLER]: { ttl: 60_000, limit: 20 } })
+  @HttpCode(HttpStatus.OK)
+  @Post('/comments/update')
+  async updateGuestComment(
+    @Body() dto: ShareGuestCommentUpdateDto,
+    @AuthWorkspace() workspace: Workspace,
+  ) {
+    const comment = await this.findGuestTargetComment(dto, workspace.id);
+    await this.assertGuestOwner(comment, dto.guestToken);
+    return this.commentService.updateGuestComment(
+      comment,
+      parseGuestContent(dto.content),
+    );
+  }
+
+  // MXD: a guest deletes a comment it created (replies cascade, as for members).
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ [SHARE_PUBLIC_THROTTLER]: { ttl: 60_000, limit: 20 } })
+  @HttpCode(HttpStatus.OK)
+  @Post('/comments/delete')
+  async deleteGuestComment(
+    @Body() dto: ShareGuestCommentOwnedDto,
+    @AuthWorkspace() workspace: Workspace,
+    @Req() req: any,
+  ) {
+    const comment = await this.findGuestTargetComment(dto, workspace.id);
+    await this.assertGuestOwner(comment, dto.guestToken);
+    await this.commentService.deleteGuestComment(comment);
+    this.logger.log(
+      `guest comment deleted: share=${dto.shareId} comment=${comment.id} ip=${truncatedIp(req)}`,
+    );
+  }
+
+  // MXD: any guest on a commentable link can resolve or re-open a thread
+  // (product decision 2026-09-14), attributed to their display name.
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ [SHARE_PUBLIC_THROTTLER]: { ttl: 60_000, limit: 20 } })
+  @HttpCode(HttpStatus.OK)
+  @Post('/comments/resolve')
+  async resolveGuestComment(
+    @Body() dto: ShareGuestCommentResolveDto,
+    @AuthWorkspace() workspace: Workspace,
+    @Req() req: any,
+  ) {
+    const comment = await this.findGuestTargetComment(dto, workspace.id);
+    const updated = await this.commentService.resolveComment(
+      comment,
+      dto.resolved,
+      { guestName: parseGuestName(dto.guestName) },
+    );
+    this.logger.log(
+      `guest comment ${dto.resolved ? 'resolved' : 'reopened'}: share=${dto.shareId} comment=${comment.id} ip=${truncatedIp(req)}`,
+    );
+    return updated;
+  }
+
+  // Resolves the comment, then runs the full guest access ladder against the
+  // comment's OWN page — a guest can only act on comments the share covers.
+  private async findGuestTargetComment(
+    dto: { shareId: string; commentId: string },
+    workspaceId: string,
+  ) {
+    const comment = await this.commentRepo.findById(dto.commentId);
+    if (!comment || comment.workspaceId !== workspaceId) {
+      throw new NotFoundException('Comment not found');
+    }
+    await this.shareService.validateGuestCommentAccess(
+      dto.shareId,
+      comment.pageId,
+      workspaceId,
+    );
     return comment;
+  }
+
+  private async assertGuestOwner(comment: Comment, guestToken: string) {
+    const isOwner = await this.commentService.isGuestCommentOwner(
+      comment,
+      guestToken,
+    );
+    if (!isOwner) {
+      throw new ForbiddenException('You can only change your own comments');
+    }
   }
 
   @Public()
@@ -390,4 +476,32 @@ export class ShareController {
       ),
     };
   }
+}
+
+// Parse + sanitize an unauthenticated comment body; 400 if nothing survives.
+function parseGuestContent(content: string): any {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new BadRequestException('Invalid comment content');
+  }
+  const sanitized = sanitizeGuestCommentContent(parsed);
+  if (!sanitized) {
+    throw new BadRequestException('Comment content is empty or not allowed');
+  }
+  return sanitized;
+}
+
+function parseGuestName(name: string): string {
+  const guestName = String(name ?? '').trim().slice(0, 50);
+  if (!guestName) {
+    throw new BadRequestException('Display name is required');
+  }
+  return guestName;
+}
+
+// Abuse forensics: enough to tell one actor from many, not an identity system.
+function truncatedIp(req: any): string {
+  return String(req?.ip ?? '').replace(/[.:][^.:]*$/, '.x');
 }

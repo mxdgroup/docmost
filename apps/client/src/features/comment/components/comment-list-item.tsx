@@ -21,6 +21,9 @@ import { IComment } from "@/features/comment/types/comment.types";
 import { CustomAvatar } from "@/components/ui/custom-avatar.tsx";
 import { currentUserAtom } from "@/features/user/atoms/current-user-atom.ts";
 import { useTranslation } from "react-i18next";
+import MxdResolveButton from "@/features/comment/components/mxd-resolve-button";
+import { useMxdResolveCommentMutation } from "@/features/comment/queries/mxd-resolve-comment-query";
+import { commentAuthorName } from "@/features/comment/utils/comment-author";
 
 interface CommentListItemProps {
   comment: IComment;
@@ -48,6 +51,8 @@ function CommentListItem({
   const [currentUser] = useAtom(currentUserAtom);
   const canResolve = useHasFeature(Feature.COMMENT_RESOLUTION);
   const createdAtAgo = useTimeAgo(comment.createdAt);
+  const mxdResolveMutation = useMxdResolveCommentMutation();
+  const authorName = commentAuthorName(comment, t);
 
   useEffect(() => {
     setContent(comment.content);
@@ -130,14 +135,14 @@ function CommentListItem({
       <Group>
         <CustomAvatar
           size="sm"
-          avatarUrl={comment.creator.avatarUrl}
-          name={comment.creator.name}
+          avatarUrl={comment.creator?.avatarUrl}
+          name={authorName}
         />
 
         <div style={{ flex: 1 }}>
           <Group justify="space-between" wrap="nowrap">
             <Text size="sm" fw={500} lineClamp={1}>
-              {comment.creator.name}
+              {authorName}
             </Text>
 
             <div style={{ visibility: hovered ? "visible" : "hidden" }}>
@@ -147,6 +152,21 @@ function CommentListItem({
                   commentId={comment.id}
                   pageId={comment.pageId}
                   resolvedAt={comment.resolvedAt}
+                />
+              )}
+
+              {/* MXD: fork-owned resolution when the EE feature is absent. */}
+              {!comment.parentCommentId && canComment && !canResolve && (
+                <MxdResolveButton
+                  isResolved={comment.resolvedAt != null}
+                  loading={mxdResolveMutation.isPending}
+                  onToggle={() =>
+                    mxdResolveMutation.mutate({
+                      commentId: comment.id,
+                      pageId: comment.pageId,
+                      resolved: comment.resolvedAt == null,
+                    })
+                  }
                 />
               )}
 

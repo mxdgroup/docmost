@@ -15,8 +15,12 @@ export interface IComment {
   createdAt: Date;
   editedAt?: Date;
   deletedAt?: Date;
-  creator: IUser;
-  resolvedBy?: IUser;
+  // MXD: null for guest comments posted from a public share link.
+  creator: IUser | null;
+  resolvedBy?: IUser | null;
+  // MXD: display name of the share guest who wrote / resolved this comment.
+  guestName?: string | null;
+  resolvedByGuestName?: string | null;
   yjsSelection?: {
     anchor: any;
     head: any;

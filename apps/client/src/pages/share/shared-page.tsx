@@ -6,15 +6,15 @@ import { Container } from "@mantine/core";
 import React, { useEffect } from "react";
 import ReadonlyPageEditor from "@/features/editor/readonly-page-editor.tsx";
 import SharedPageCollabEditor from "@/features/share/components/shared-page-collab-editor.tsx";
-import SharedPageComments from "@/features/share/components/shared-page-comments.tsx";
 import {
+  isShareEditEnabled,
   isShareGuestCommentsEnabled,
 } from "@/lib/config.ts";
-import { isShareEditEnabled } from "@/lib/config.ts";
+import { shareCommentsContextAtom } from "@/features/share/atoms/share-comments-atom";
+import { useShareCommentHighlightClicks } from "@/features/share/hooks/use-share-comments-aside";
 import { extractPageSlugId } from "@/lib";
 import { Error404 } from "@/components/ui/error-404.tsx";
-import ShareBranding from "@/features/share/components/share-branding.tsx";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import {
   sharedPageFullWidthAtom,
   sharedTreeDataAtom,
@@ -33,6 +33,30 @@ export default function SharedPage() {
 
   const sharedTreeData = useAtomValue(sharedTreeDataAtom);
   const fullWidth = useAtomValue(sharedPageFullWidthAtom);
+  const setCommentsContext = useSetAtom(shareCommentsContextAtom);
+
+  // MXD: each elevated mode rides its own kill switch (mirrors the server).
+  const mode = data?.share.mode;
+  const liveMode =
+    mode === "edit" && isShareEditEnabled()
+      ? "edit"
+      : mode === "comment" && isShareGuestCommentsEnabled()
+        ? "comment"
+        : null;
+  const commentsEnabled = liveMode !== null;
+
+  useEffect(() => {
+    if (!data || !commentsEnabled) {
+      setCommentsContext(null);
+      return;
+    }
+    setCommentsContext({ shareId: data.share.id, pageId: data.page.id });
+    return () => {
+      setCommentsContext(null);
+    };
+  }, [data?.share.id, data?.page.id, commentsEnabled, setCommentsContext]);
+
+  useShareCommentHighlightClicks(commentsEnabled);
 
   useEffect(() => {
     if (shareId && data) {
@@ -70,13 +94,17 @@ export default function SharedPage() {
       </Helmet>
 
       <Container fluid={fullWidth} size={fullWidth ? undefined : 900} p={0}>
-        {data.share.mode === "edit" && isShareEditEnabled() ? (
-          // MXD: anonymous real-time editing for edit-mode shares
+        {liveMode ? (
+          // MXD: live session — writable for edit shares, read-only (to
+          // anchor inline comments) for comment shares.
           <SharedPageCollabEditor
             key={data.page.id}
             pageId={data.page.id}
             shareId={data.share.id}
             title={data.page.title}
+            content={data.page.content}
+            mode={liveMode}
+            commentsEnabled={commentsEnabled}
           />
         ) : (
           <ReadonlyPageEditor
@@ -87,16 +115,8 @@ export default function SharedPage() {
             shareId={data.share.id}
           />
         )}
-        {(data.share.mode === "comment" || data.share.mode === "edit") &&
-          (isShareGuestCommentsEnabled() || isShareEditEnabled()) && (
-            <SharedPageComments
-              shareId={data.share.id}
-              pageId={data.page.id}
-            />
-          )}
       </Container>
 
-      {data && !shareId && !(data.features?.length > 0) && <ShareBranding />}
     </div>
   );
 }

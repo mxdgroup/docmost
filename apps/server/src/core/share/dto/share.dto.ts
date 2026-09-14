@@ -2,6 +2,7 @@ import {
   IsBoolean,
   IsIn,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -98,4 +99,51 @@ export class ShareGuestCommentDto extends ShareCommentsListDto {
   @IsOptional()
   @IsUUID()
   parentCommentId?: string;
+
+  // Inline comment anchor: the selected text (display only) and its Yjs
+  // relative positions (shape-validated by yjsSelectionSchema before use).
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  selection?: string;
+
+  @IsOptional()
+  @IsObject()
+  yjsSelection?: { anchor: any; head: any };
+}
+
+// Guest actions on an existing comment. `commentId` is resolved to its page
+// server-side; the share must cover that page.
+export class ShareGuestCommentTargetDto {
+  @IsString()
+  @IsNotEmpty()
+  shareId: string;
+
+  @IsUUID()
+  commentId: string;
+}
+
+export class ShareGuestCommentOwnedDto extends ShareGuestCommentTargetDto {
+  // Ownership secret returned when the guest created the comment.
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  guestToken: string;
+}
+
+export class ShareGuestCommentUpdateDto extends ShareGuestCommentOwnedDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20000)
+  content: string;
+}
+
+export class ShareGuestCommentResolveDto extends ShareGuestCommentTargetDto {
+  @IsBoolean()
+  resolved: boolean;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  guestName: string;
 }
