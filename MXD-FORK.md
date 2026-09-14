@@ -1,7 +1,7 @@
 # MXD-FORK — how this fork of Docmost works
 
 This repo is `mxdgroup/docmost`, a fork of [docmost/docmost](https://github.com/docmost/docmost)
-serving `docs.mxd.digital`. The ops repo (`mxdgroup/mxdcompass_mostdocs`) deploys the image this
+serving `docs.mxd.digital`. The ops repo (`mxdgroup/mxdcompass_docmost`) deploys the image this
 repo builds; the plan of record is that repo's
 `docs/plans/2026-08-08-001-feat-docmost-fork-coda-roadmap-plan.md`.
 
