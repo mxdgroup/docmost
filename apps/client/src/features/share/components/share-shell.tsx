@@ -44,6 +44,7 @@ import {
 } from "@/features/share/atoms/share-comments-atom";
 import { getGuestName } from "@/features/share/guest-identity";
 import SharedCommentsPanel from "@/features/share/components/shared-comments-panel";
+import CommenterBanner from "@/features/share/components/commenter-banner";
 import classes from "./share.module.css";
 import {
   SearchControl,
@@ -169,6 +170,7 @@ export default function ShareShell({
           },
         },
       })}
+      {...(commentsContext && { footer: { height: 48 } })}
       aside={{
         width: activeAsideTab === "comments" ? 360 : 300,
         breakpoint: "sm",
@@ -340,6 +342,16 @@ export default function ShareShell({
           </ScrollArea>
         )}
       </AppShell.Aside>
+
+      {commentsContext && (
+        <AppShell.Footer>
+          <CommenterBanner
+            shareId={commentsContext.shareId}
+            pageId={commentsContext.pageId}
+            sharePath={commentsContext.sharePath}
+          />
+        </AppShell.Footer>
+      )}
 
       <ShareSearchSpotlight shareId={shareId} />
     </AppShell>

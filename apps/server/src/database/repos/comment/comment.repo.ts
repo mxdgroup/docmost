@@ -20,23 +20,41 @@ export class CommentRepo {
   // todo, add workspaceId
   async findById(
     commentId: string,
-    opts?: { includeCreator: boolean; includeResolvedBy: boolean },
+    opts?: {
+      includeCreator: boolean;
+      includeResolvedBy: boolean;
+      // MXD: commenter-account author/resolver ({ id, name }; + email for members)
+      includeCommenter?: boolean;
+      includeCommenterEmail?: boolean;
+    },
   ): Promise<Comment> {
     return await this.db
       .selectFrom('comments')
       .selectAll('comments')
       .$if(opts?.includeCreator, (qb) => qb.select(this.withCreator))
       .$if(opts?.includeResolvedBy, (qb) => qb.select(this.withResolvedBy))
+      .$if(!!opts?.includeCommenter, (qb) =>
+        qb.select((eb) => [
+          this.withCommenter(eb, !!opts?.includeCommenterEmail),
+          this.withResolvedByCommenter(eb),
+        ]),
+      )
       .where('id', '=', commentId)
       .executeTakeFirst();
   }
 
-  async findPageComments(pageId: string, pagination: PaginationOptions) {
+  async findPageComments(
+    pageId: string,
+    pagination: PaginationOptions,
+    opts?: { includeCommenterEmail?: boolean },
+  ) {
     const query = this.db
       .selectFrom('comments')
       .selectAll('comments')
       .select((eb) => this.withCreator(eb))
       .select((eb) => this.withResolvedBy(eb))
+      .select((eb) => this.withCommenter(eb, !!opts?.includeCommenterEmail))
+      .select((eb) => this.withResolvedByCommenter(eb))
       .where('pageId', '=', pageId);
 
     return executeWithCursorPagination(query, {
@@ -80,6 +98,48 @@ export class CommentRepo {
         .select(['users.id', 'users.name', 'users.avatarUrl'])
         .whereRef('users.id', '=', 'comments.creatorId'),
     ).as('creator');
+  }
+
+  // MXD: a commenter's email is PII — only member-facing reads include it,
+  // never the public share listing.
+  withCommenter(eb: ExpressionBuilder<DB, 'comments'>, includeEmail: boolean) {
+    return jsonObjectFrom(
+      eb
+        .selectFrom('mxdShareCommenters')
+        .select(
+          includeEmail
+            ? ['mxdShareCommenters.id', 'mxdShareCommenters.name', 'mxdShareCommenters.email']
+            : ['mxdShareCommenters.id', 'mxdShareCommenters.name'],
+        )
+        .whereRef('mxdShareCommenters.id', '=', 'comments.commenterId'),
+    ).as('commenter');
+  }
+
+  withResolvedByCommenter(eb: ExpressionBuilder<DB, 'comments'>) {
+    return jsonObjectFrom(
+      eb
+        .selectFrom('mxdShareCommenters')
+        .select(['mxdShareCommenters.id', 'mxdShareCommenters.name'])
+        .whereRef('mxdShareCommenters.id', '=', 'comments.resolvedByCommenterId'),
+    ).as('resolvedByCommenter');
+  }
+
+  // MXD: move a guest comment onto a commenter account (ownership already
+  // proven by the caller). Only anonymous, unclaimed rows can move.
+  async claimGuestComment(
+    commentId: string,
+    commenterId: string,
+    workspaceId: string,
+  ): Promise<boolean> {
+    const result = await this.db
+      .updateTable('comments')
+      .set({ commenterId })
+      .where('id', '=', commentId)
+      .where('workspaceId', '=', workspaceId)
+      .where('creatorId', 'is', null)
+      .where('commenterId', 'is', null)
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows ?? 0) > 0;
   }
 
   withResolvedBy(eb: ExpressionBuilder<DB, 'comments'>) {

@@ -166,6 +166,8 @@ export class CommentService {
       workspaceId: string;
       guestName: string;
       sanitizedContent: any;
+      // MXD: set when the poster is signed in with a commenter account
+      commenterId?: string | null;
     },
     dto: {
       parentCommentId?: string;
@@ -175,6 +177,7 @@ export class CommentService {
     },
   ): Promise<{ comment: Comment; guestToken: string }> {
     const { page, workspaceId, guestName, sanitizedContent } = opts;
+    const commenterId = opts.commenterId ?? null;
 
     if (dto.parentCommentId) {
       const parentComment = await this.commentRepo.findById(
@@ -199,6 +202,7 @@ export class CommentService {
       parentCommentId: dto?.parentCommentId,
       creatorId: null,
       guestName,
+      commenterId,
       workspaceId,
       spaceId: page.spaceId,
     });
@@ -216,6 +220,7 @@ export class CommentService {
     const comment = await this.commentRepo.findById(inserted.id, {
       includeCreator: true,
       includeResolvedBy: true,
+      includeCommenter: true,
     });
 
     const isReply = !!dto.parentCommentId;
@@ -240,13 +245,17 @@ export class CommentService {
     return { comment, guestToken };
   }
 
-  // MXD: true only when `guestToken` is the ownership secret minted for this
-  // guest comment. Member comments never have one, so guests can't touch them.
+  // MXD: a share visitor owns a comment when they're the signed-in commenter
+  // it's attributed to, or when `guestToken` is the ownership secret minted
+  // for it. Member comments have neither, so share visitors can't touch them.
   async isGuestCommentOwner(
     comment: Comment,
     guestToken: string | undefined,
+    commenterId?: string | null,
   ): Promise<boolean> {
-    if (comment.creatorId !== null || !guestToken) return false;
+    if (comment.creatorId !== null) return false;
+    if (commenterId && comment.commenterId === commenterId) return true;
+    if (!guestToken) return false;
     const storedHash = await this.commentRepo.findGuestCommentTokenHash(
       comment.id,
     );
@@ -268,6 +277,7 @@ export class CommentService {
     const updated = await this.commentRepo.findById(comment.id, {
       includeCreator: true,
       includeResolvedBy: true,
+      includeCommenter: true,
     });
     this.wsService.emitCommentEvent(comment.spaceId, comment.pageId, {
       operation: 'commentUpdated',
@@ -309,7 +319,7 @@ export class CommentService {
   async resolveComment(
     comment: Comment,
     resolved: boolean,
-    actor: { user?: User; guestName?: string },
+    actor: { user?: User; guestName?: string; commenterId?: string | null },
   ): Promise<Comment> {
     if (comment.parentCommentId) {
       throw new BadRequestException('Only top-level comments can be resolved');
@@ -322,12 +332,14 @@ export class CommentService {
             resolvedAt: now,
             resolvedById: actor.user?.id ?? null,
             resolvedByGuestName: actor.user ? null : (actor.guestName ?? null),
+            resolvedByCommenterId: actor.user ? null : (actor.commenterId ?? null),
             updatedAt: now,
           }
         : {
             resolvedAt: null,
             resolvedById: null,
             resolvedByGuestName: null,
+            resolvedByCommenterId: null,
             updatedAt: now,
           },
       comment.id,
@@ -351,6 +363,7 @@ export class CommentService {
     const updated = await this.commentRepo.findById(comment.id, {
       includeCreator: true,
       includeResolvedBy: true,
+      includeCommenter: true,
     });
     this.wsService.emitCommentEvent(comment.spaceId, comment.pageId, {
       operation: 'commentResolved',
@@ -390,6 +403,7 @@ export class CommentService {
   async findByPageId(
     pageId: string,
     pagination: PaginationOptions,
+    opts?: { includeCommenterEmail?: boolean },
   ): Promise<CursorPaginationResult<Comment>> {
     const page = await this.pageRepo.findById(pageId);
 
@@ -397,7 +411,7 @@ export class CommentService {
       throw new BadRequestException('Page not found');
     }
 
-    return this.commentRepo.findPageComments(pageId, pagination);
+    return this.commentRepo.findPageComments(pageId, pagination, opts);
   }
 
   async update(

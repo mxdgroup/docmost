@@ -15,6 +15,7 @@ import {
 import { AuthUser } from '../../common/decorators/auth-user.decorator';
 import { Comment, User, Workspace } from '@docmost/db/types/entity.types';
 import { CommentRepo } from '@docmost/db/repos/comment/comment.repo';
+import { ShareCommenterService } from './commenter/share-commenter.service';
 import { AuthWorkspace } from '../../common/decorators/auth-workspace.decorator';
 import { ShareService } from './share.service';
 import {
@@ -58,6 +59,7 @@ export class ShareController {
     private readonly shareService: ShareService,
     private readonly commentService: CommentService,
     private readonly commentRepo: CommentRepo,
+    private readonly commenterService: ShareCommenterService,
     private readonly shareRepo: ShareRepo,
     private readonly pageRepo: PageRepo,
     private readonly pagePermissionRepo: PagePermissionRepo,
@@ -195,7 +197,13 @@ export class ShareController {
     );
 
     const sanitized = parseGuestContent(dto.content);
-    const guestName = parseGuestName(dto.guestName);
+    // A signed-in commenter posts under their account; otherwise a guest name
+    // is required as before.
+    const commenter = await this.commenterService.resolveFromRequest(
+      req,
+      workspace.id,
+    );
+    const guestName = commenter ? commenter.name : parseGuestName(dto.guestName);
 
     const { comment, guestToken } =
       await this.commentService.createGuestComment(
@@ -204,6 +212,7 @@ export class ShareController {
           workspaceId: workspace.id,
           guestName,
           sanitizedContent: sanitized,
+          commenterId: commenter?.id ?? null,
         },
         {
           parentCommentId: dto.parentCommentId,
@@ -228,9 +237,10 @@ export class ShareController {
   async updateGuestComment(
     @Body() dto: ShareGuestCommentUpdateDto,
     @AuthWorkspace() workspace: Workspace,
+    @Req() req: any,
   ) {
     const comment = await this.findGuestTargetComment(dto, workspace.id);
-    await this.assertGuestOwner(comment, dto.guestToken);
+    await this.assertGuestOwner(comment, dto.guestToken, req, workspace.id);
     return this.commentService.updateGuestComment(
       comment,
       parseGuestContent(dto.content),
@@ -249,7 +259,7 @@ export class ShareController {
     @Req() req: any,
   ) {
     const comment = await this.findGuestTargetComment(dto, workspace.id);
-    await this.assertGuestOwner(comment, dto.guestToken);
+    await this.assertGuestOwner(comment, dto.guestToken, req, workspace.id);
     await this.commentService.deleteGuestComment(comment);
     this.logger.log(
       `guest comment deleted: share=${dto.shareId} comment=${comment.id} ip=${truncatedIp(req)}`,
@@ -269,10 +279,16 @@ export class ShareController {
     @Req() req: any,
   ) {
     const comment = await this.findGuestTargetComment(dto, workspace.id);
+    const commenter = await this.commenterService.resolveFromRequest(
+      req,
+      workspace.id,
+    );
     const updated = await this.commentService.resolveComment(
       comment,
       dto.resolved,
-      { guestName: parseGuestName(dto.guestName) },
+      commenter
+        ? { guestName: commenter.name, commenterId: commenter.id }
+        : { guestName: parseGuestName(dto.guestName) },
     );
     this.logger.log(
       `guest comment ${dto.resolved ? 'resolved' : 'reopened'}: share=${dto.shareId} comment=${comment.id} ip=${truncatedIp(req)}`,
@@ -298,10 +314,20 @@ export class ShareController {
     return comment;
   }
 
-  private async assertGuestOwner(comment: Comment, guestToken: string) {
+  private async assertGuestOwner(
+    comment: Comment,
+    guestToken: string | undefined,
+    req: any,
+    workspaceId: string,
+  ) {
+    const commenter = await this.commenterService.resolveFromRequest(
+      req,
+      workspaceId,
+    );
     const isOwner = await this.commentService.isGuestCommentOwner(
       comment,
       guestToken,
+      commenter?.id,
     );
     if (!isOwner) {
       throw new ForbiddenException('You can only change your own comments');

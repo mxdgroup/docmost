@@ -91,10 +91,12 @@ export class ShareGuestCommentDto extends ShareCommentsListDto {
   @MaxLength(20000) // bound unauthenticated input before JSON.parse + sanitize
   content: string;
 
+  // Required for anonymous guests; ignored for signed-in commenters (the
+  // controller enforces which applies).
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(100)
-  guestName: string;
+  guestName?: string;
 
   @IsOptional()
   @IsUUID()
@@ -124,11 +126,12 @@ export class ShareGuestCommentTargetDto {
 }
 
 export class ShareGuestCommentOwnedDto extends ShareGuestCommentTargetDto {
-  // Ownership secret returned when the guest created the comment.
+  // Ownership secret returned when the guest created the comment. Optional for
+  // a signed-in commenter acting on a comment attributed to their account.
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(200)
-  guestToken: string;
+  guestToken?: string;
 }
 
 export class ShareGuestCommentUpdateDto extends ShareGuestCommentOwnedDto {
@@ -142,8 +145,8 @@ export class ShareGuestCommentResolveDto extends ShareGuestCommentTargetDto {
   @IsBoolean()
   resolved: boolean;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(100)
-  guestName: string;
+  guestName?: string;
 }

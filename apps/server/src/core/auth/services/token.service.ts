@@ -17,6 +17,7 @@ import {
   JwtPdfRenderPayload,
   JwtType,
   JwtShareCollabPayload,
+  JwtShareCommenterPayload,
 } from '../dto/jwt-payload';
 import { User } from '@docmost/db/types/entity.types';
 import { isUserDisabled } from '../../../common/helpers';
@@ -67,6 +68,20 @@ export class TokenService {
       type: JwtType.EXCHANGE,
     };
     return this.jwtService.sign(payload, { expiresIn: '10s' });
+  }
+
+  // MXD: commenter-account session (30 days). Carries the commenter id, never
+  // a user id, and a distinct `type` no Docmost guard accepts.
+  async generateShareCommenterToken(opts: {
+    commenterId: string;
+    workspaceId: string;
+  }): Promise<string> {
+    const payload: JwtShareCommenterPayload = {
+      sub: opts.commenterId,
+      workspaceId: opts.workspaceId,
+      type: JwtType.SHARE_COMMENTER,
+    };
+    return this.jwtService.sign(payload, { expiresIn: '30d' });
   }
 
   // MXD: short-lived, share-scoped, carries NO user id. Reconnects re-mint.

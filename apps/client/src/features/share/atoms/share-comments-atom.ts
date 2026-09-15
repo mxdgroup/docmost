@@ -7,6 +7,8 @@ import { atom, PrimitiveAtom } from "jotai";
 export const shareCommentsContextAtom = atom(null) as PrimitiveAtom<{
   shareId: string;
   pageId: string;
+  // canonical share page path, used as the commenter sign-in return address
+  sharePath: string;
 } | null>;
 
 // Which panel the share page's right-hand aside shows.

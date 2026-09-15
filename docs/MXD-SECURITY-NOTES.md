@@ -37,6 +37,27 @@ return 403).
   link can resolve/re-open any top-level thread on pages the share covers
   (product decision). Every guest action re-runs `validateGuestCommentAccess`
   against the comment's *own* page, never a client-supplied page id.
+- **Commenter accounts** (2026-09-15, `/shares/commenter/*`): optional
+  sign-in so a share visitor comments under their own name. A commenter is a
+  row in `mxd_share_commenters` (email + name). It is **not** a Docmost user and
+  has no workspace or space membership.
+  - **Sign-in** is an emailed single-use link. The token is 32 random bytes;
+    only its sha256 is stored. It expires in 15 minutes and is consumed
+    atomically, so a second use fails.
+  - **Session** is an httpOnly SameSite=Lax cookie `mxdCommenterToken` holding a
+    JWT with `type: share_commenter`. It is honored only by the public share
+    comment endpoints. `JwtStrategy` and collab auth accept only their own
+    types, verified e2e: users/me, spaces and pages/info all return 401.
+  - **request-link** is enumeration-safe (same response either way) and runs
+    the full guest-comment access ladder, so it only works from a live,
+    commentable share. The return path must match `/share/<key>/p/<slug>`
+    (no open redirect). It is capped at 3 links per email per 15 minutes, plus
+    the per-IP throttle.
+  - **Claiming guest comments** on sign-in requires the per-comment ownership
+    token for each comment, so a signed-in commenter cannot take over anyone
+    else's comments.
+  - **Commenter emails** are never returned by the public comment listing.
+    Only member reads (`/comments`) include them.
 - Both surfaces are per-IP throttled (`share-public` throttler). This assumes
   the deployment sits behind a single trusted reverse proxy that overwrites
   `X-Forwarded-For` — our Caddy front does. See residual risks.
@@ -92,6 +113,10 @@ understand:
    created as `comment` and a one-off migration lifted all existing `view`
    links to `comment`. Lower a link to "Can view" (page ⋯ → Public link access)
    if the page carries internal-only comment threads.
+7. **Commenter sign-in proves control of an inbox, nothing more.** Anyone can
+   create a commenter account for any address they can receive mail at; the
+   display name is self-chosen (shown to the team with the email on hover and
+   an "external" tag). It does not prove affiliation with a client.
 6. **Guest ownership is browser-held.** Losing local storage loses the ability
    to edit/delete one's own guest comments (they remain; a space admin can
    delete them). Anyone with the link can resolve threads — resolution is a

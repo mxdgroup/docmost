@@ -46,7 +46,6 @@ import { useTimeAgo } from "@/hooks/use-time-ago";
 import { CustomAvatar } from "@/components/ui/custom-avatar.tsx";
 import {
   activeShareCommentIdAtom,
-  guestNameAtom,
 } from "@/features/share/atoms/share-comments-atom";
 import {
   useCreateShareCommentMutation,
@@ -55,7 +54,7 @@ import {
   useShareCommentsQuery,
   useUpdateShareCommentMutation,
 } from "@/features/share/queries/share-comment-query";
-import { getGuestCommentToken } from "@/features/share/guest-identity";
+import { useShareIdentity } from "@/features/share/hooks/use-share-identity";
 import GuestNameInput from "@/features/share/components/guest-name-input";
 import { scrollToThread } from "@/features/share/hooks/use-share-comments-aside";
 
@@ -67,7 +66,8 @@ export default function SharedCommentsPanel({ shareId, pageId }: PanelProps) {
     shareId,
     pageId,
   );
-  const guestName = useAtomValue(guestNameAtom);
+  const identity = useShareIdentity();
+  const { guestName } = identity;
   const [editingName, setEditingName] = useState(false);
   const createMutation = useCreateShareCommentMutation(shareId, pageId);
 
@@ -89,19 +89,19 @@ export default function SharedCommentsPanel({ shareId, pageId }: PanelProps) {
 
   const post = useCallback(
     async (content: any, parentCommentId?: string) => {
-      if (!guestName) {
+      if (!identity.canPost) {
         notifications.show({ message: t("Add your name to comment") });
         return false;
       }
       const created = await createMutation.mutateAsync({
-        guestName,
+        guestName: identity.guestNameForRequest,
         content: JSON.stringify(content),
         parentCommentId,
       });
       if (!parentCommentId) scrollToThread(created.id);
       return true;
     },
-    [guestName, createMutation, t],
+    [identity.canPost, identity.guestNameForRequest, createMutation, t],
   );
 
   const renderThread = (comment: IComment) => (
@@ -127,7 +127,11 @@ export default function SharedCommentsPanel({ shareId, pageId }: PanelProps) {
   return (
     <Box style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <Box mb="xs">
-        {!guestName || editingName ? (
+        {identity.signedIn ? (
+          <Text size="xs" c="dimmed">
+            {t("Commenting as")} <b>{identity.commenter?.name}</b>
+          </Text>
+        ) : !guestName || editingName ? (
           <GuestNameInput
             initialValue={guestName}
             autoFocus={editingName}
@@ -204,7 +208,7 @@ export default function SharedCommentsPanel({ shareId, pageId }: PanelProps) {
       </Tabs>
 
       <PageComposer
-        guestName={guestName}
+        guestName={identity.displayName}
         isLoading={createMutation.isPending}
         onSave={(content) => post(content)}
       />
@@ -245,7 +249,7 @@ function Thread({
   const { t } = useTranslation();
   const [activeId] = useAtom(activeShareCommentIdAtom);
   const resolverName = comment.resolvedAt
-    ? commentResolverName(comment, t)
+    ? commentResolverName(comment, t, "share")
     : null;
 
   return (
@@ -293,7 +297,7 @@ function CommentItem({
 }) {
   const { t } = useTranslation();
   const { hovered, ref } = useHover();
-  const guestName = useAtomValue(guestNameAtom);
+  const identity = useShareIdentity();
   const [isEditing, setIsEditing] = useState(false);
   const editContentRef = useRef<any>(null);
   const createdAtAgo = useTimeAgo(comment.createdAt);
@@ -301,12 +305,12 @@ function CommentItem({
   const deleteMutation = useDeleteShareCommentMutation(shareId, pageId);
   const resolveMutation = useResolveShareCommentMutation(shareId, pageId);
 
-  const authorName = commentAuthorName(comment, t);
-  const ownerToken = getGuestCommentToken(comment.id);
+  const authorName = commentAuthorName(comment, t, "share");
+  const { owned, guestToken: ownerToken } = identity.ownership(comment);
   const isTopLevel = !comment.parentCommentId;
 
   const saveEdit = async () => {
-    if (!ownerToken || !editContentRef.current) {
+    if (!owned || !editContentRef.current) {
       setIsEditing(false);
       return;
     }
@@ -326,19 +330,19 @@ function CommentItem({
       labels: { confirm: t("Delete"), cancel: t("Cancel") },
       confirmProps: { color: "red" },
       onConfirm: () =>
-        ownerToken &&
+        owned &&
         deleteMutation.mutate({ commentId: comment.id, guestToken: ownerToken }),
     });
 
   const toggleResolved = () => {
-    if (!guestName) {
+    if (!identity.canPost) {
       notifications.show({ message: t("Add your name to comment") });
       return;
     }
     resolveMutation.mutate({
       commentId: comment.id,
       resolved: comment.resolvedAt == null,
-      guestName,
+      guestName: identity.guestNameForRequest,
     });
   };
 
@@ -363,7 +367,7 @@ function CommentItem({
           />
         ) : (
           <Avatar size="sm" radius="xl" color="gray">
-            {(comment.guestName ?? "?").charAt(0).toUpperCase()}
+            {(comment.commenter?.name ?? comment.guestName ?? "?").charAt(0).toUpperCase()}
           </Avatar>
         )}
 
@@ -384,7 +388,7 @@ function CommentItem({
                   onToggle={toggleResolved}
                 />
               )}
-              {ownerToken && (
+              {owned && (
                 <Menu shadow="md" width={180}>
                   <Menu.Target>
                     <ActionIcon

@@ -9,6 +9,7 @@ jest.mock('../../collaboration/collaboration.gateway', () => ({
   CollaborationGateway: class {},
 }));
 
+
 import { CommentService } from '../comment/comment.service';
 import { ShareController } from './share.controller';
 
@@ -129,6 +130,16 @@ describe('CommentService guest comments', () => {
     expect(await service.isGuestCommentOwner(memberComment, guestToken)).toBe(false);
   });
 
+  it('commenter ownership: only the account a comment is attributed to owns it', async () => {
+    const { service } = buildCommentService();
+    const owned = { id: 'c1', creatorId: null, commenterId: 'cmtr-1' } as any;
+    expect(await service.isGuestCommentOwner(owned, undefined, 'cmtr-1')).toBe(true);
+    expect(await service.isGuestCommentOwner(owned, undefined, 'cmtr-2')).toBe(false);
+    expect(await service.isGuestCommentOwner(owned, undefined, null)).toBe(false);
+    const member = { id: 'c2', creatorId: 'user-1', commenterId: 'cmtr-1' } as any;
+    expect(await service.isGuestCommentOwner(member, undefined, 'cmtr-1')).toBe(false);
+  });
+
   it('deleting an inline guest comment removes its highlight server-side', async () => {
     const inline = { id: COMMENT, pageId: PAGE, spaceId: SPACE, type: 'inline', parentCommentId: null };
     const { service, collaborationGateway, commentRepo, wsService } =
@@ -199,6 +210,7 @@ describe('ShareController guest comment actions', () => {
     comment?: any;
     isOwner?: boolean;
     accessError?: Error;
+    commenter?: any;
   }) {
     const shareService = {
       validateGuestCommentAccess: jest.fn(async () => {
@@ -219,10 +231,14 @@ describe('ShareController guest comment actions', () => {
     const commentRepo = {
       findById: jest.fn().mockResolvedValue('comment' in opts ? opts.comment : null),
     };
+    const commenterService = {
+      resolveFromRequest: jest.fn().mockResolvedValue(opts.commenter ?? null),
+    };
     const controller = new ShareController(
       shareService as any,
       commentService as any,
       commentRepo as any,
+      commenterService as any,
       {} as any, // shareRepo
       {} as any, // pageRepo
       {} as any, // pagePermissionRepo
@@ -230,7 +246,7 @@ describe('ShareController guest comment actions', () => {
       {} as any, // licenseCheckService
       { log: jest.fn() } as any, // auditService
     );
-    return { controller, shareService, commentService };
+    return { controller, shareService, commentService, commenterService };
   }
 
   const workspace = { id: WS } as any;
@@ -260,6 +276,7 @@ describe('ShareController guest comment actions', () => {
       controller.updateGuestComment(
         { shareId: 's', commentId: COMMENT, guestToken: 'bad', content } as any,
         workspace,
+        {},
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
     await expect(
@@ -288,6 +305,7 @@ describe('ShareController guest comment actions', () => {
     await controller.updateGuestComment(
       { shareId: 's', commentId: COMMENT, guestToken: 'tok', content: hostile } as any,
       workspace,
+        {},
     );
     const sanitized = commentService.updateGuestComment.mock.calls[0][1];
     expect(JSON.stringify(sanitized)).not.toContain('iframe');
@@ -354,5 +372,69 @@ describe('ShareController guest comment actions', () => {
         {},
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('a signed-in commenter posts under their account without a guest name', async () => {
+    const commenter = { id: 'cmtr-1', name: 'Sam Kelly', email: 'sam@x.co' };
+    const { controller, commentService } = buildController({ commenter });
+    await controller.createGuestComment(
+      { shareId: 's', pageId: PAGE, content } as any,
+      workspace,
+      {},
+    );
+    expect(commentService.createGuestComment).toHaveBeenCalledWith(
+      expect.objectContaining({ guestName: 'Sam Kelly', commenterId: 'cmtr-1' }),
+      expect.anything(),
+    );
+  });
+
+  it('an anonymous guest still needs a display name', async () => {
+    const { controller, commentService } = buildController({});
+    await expect(
+      controller.createGuestComment(
+        { shareId: 's', pageId: PAGE, content } as any,
+        workspace,
+        {},
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(commentService.createGuestComment).not.toHaveBeenCalled();
+  });
+
+  it('ownership check passes the signed-in commenter id (no token needed)', async () => {
+    const commenter = { id: 'cmtr-1', name: 'Sam Kelly' };
+    const { controller, commentService } = buildController({
+      comment: { ...guestComment, commenterId: 'cmtr-1' },
+      commenter,
+      isOwner: true,
+    });
+    await controller.deleteGuestComment(
+      { shareId: 's', commentId: COMMENT } as any,
+      workspace,
+      {},
+    );
+    expect(commentService.isGuestCommentOwner).toHaveBeenCalledWith(
+      expect.objectContaining({ id: COMMENT }),
+      undefined,
+      'cmtr-1',
+    );
+    expect(commentService.deleteGuestComment).toHaveBeenCalled();
+  });
+
+  it('a signed-in commenter resolves as themselves', async () => {
+    const commenter = { id: 'cmtr-1', name: 'Sam Kelly' };
+    const { controller, commentService } = buildController({
+      comment: guestComment,
+      commenter,
+    });
+    await controller.resolveGuestComment(
+      { shareId: 's', commentId: COMMENT, resolved: true } as any,
+      workspace,
+      {},
+    );
+    expect(commentService.resolveComment).toHaveBeenCalledWith(
+      guestComment,
+      true,
+      { guestName: 'Sam Kelly', commenterId: 'cmtr-1' },
+    );
   });
 });
