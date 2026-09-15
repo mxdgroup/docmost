@@ -19,6 +19,7 @@ export class PostmarkDriver implements MailDriver {
         From: message.from,
         To: message.to,
         Subject: message.subject,
+        ReplyTo: message.replyTo,
         TextBody: message.text,
         HtmlBody: message.html,
       });

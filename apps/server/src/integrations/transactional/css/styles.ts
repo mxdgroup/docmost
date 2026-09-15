@@ -1,66 +1,79 @@
-export const fontFamily = 'HelveticaNeue,Helvetica,Arial,sans-serif';
+// MXD: brand tokens for every transactional email (matches the MxD client
+// onboarding emails: blue #4E61F6, ink #131927, steel #6D717F, paper #F4F4F6,
+// rounded white card, pill buttons).
+export const brand = {
+  blue: '#4E61F6',
+  ink: '#131927',
+  steel: '#6D717F',
+  paper: '#F4F4F6',
+  rule: '#E5E7EA',
+  logoUrl: 'https://mxd.digital/mxd-logo.png',
+};
+
+export const fontFamily =
+  "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
 
 export const main = {
-  backgroundColor: '#edf2f7',
+  backgroundColor: brand.paper,
   fontFamily,
+  margin: 0,
+  padding: '32px 16px',
 };
 
 export const container = {
-  maxWidth: '580px',
-  margin: '10px auto',
+  maxWidth: '560px',
+  margin: '0 auto',
   backgroundColor: '#ffffff',
-  borderColor: '#e8e5ef',
-  borderRadius: '2px',
-  borderWidth: '1px',
-  boxShadow: '0 2px 0 rgba(0, 0, 150, 0.025), 2px 4px 0 rgba(0, 0, 150, 0.015)',
+  borderRadius: '20px',
+  padding: '32px 28px 28px',
 };
 
 export const content = {
-  padding: '5px 20px 10px 20px',
+  padding: '0 4px',
 };
 
 export const paragraph = {
-  fontFamily:
-    "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif",
-  color: '#333',
-  lineHeight: 1,
-  fontSize: 14,
+  fontFamily,
+  color: brand.steel,
+  lineHeight: '26px',
+  fontSize: '16px',
+  margin: '0 0 16px',
 };
 
 export const h1 = {
-  color: '#333',
-  fontFamily:
-    "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif",
+  color: brand.ink,
+  fontFamily,
   fontSize: '24px',
-  fontWeight: 'bold',
+  lineHeight: '32px',
+  fontWeight: 700,
+  margin: '0 0 12px',
   padding: '0',
 };
 
 export const logo = {
-  display: 'flex',
-  justifyContent: 'center',
-  alingItems: 'center',
-  padding: 4,
+  padding: '0 4px 24px',
 };
 
 export const link = {
+  color: brand.blue,
   textDecoration: 'underline',
 };
 
 export const footer = {
-  maxWidth: '580px',
+  maxWidth: '560px',
   margin: '0 auto',
+  padding: '20px 32px 0',
 };
 
 export const button = {
-  backgroundColor: '#176ae5',
-  borderRadius: '3px',
-  color: '#fff',
-  fontFamily: "'Open Sans', 'Helvetica Neue', Arial",
+  backgroundColor: brand.blue,
+  borderRadius: '80px',
+  color: '#ffffff',
+  fontFamily,
   fontSize: '16px',
+  fontWeight: 600,
   textDecoration: 'none',
   textAlign: 'center' as const,
-  display: 'block',
-  width: '100px',
-  padding: '8px',
+  display: 'inline-block',
+  padding: '14px 28px',
 };

@@ -35,7 +35,8 @@ export class MailService {
     }
 
     const sender = `${this.environmentService.getMailFromName()} <${from}> `;
-    await this.mailDriver.sendMail({ from: sender, ...message });
+    const replyTo = message.replyTo ?? this.environmentService.getMailReplyTo();
+    await this.mailDriver.sendMail({ from: sender, ...message, replyTo });
   }
 
   async sendToQueue(message: MailMessage): Promise<void> {
