@@ -78,7 +78,7 @@ const requestOpts = {
 };
 
 describe('ShareCommenterService.requestSignInLink', () => {
-  it('stores only a hash of a 15-minute token and emails a link back to the share page', async () => {
+  it('stores only a hash of a 24-hour token and emails a link back to the share page', async () => {
     const { service, commenterRepo, mailService } = build();
     await service.requestSignInLink(requestOpts);
 
@@ -86,8 +86,8 @@ describe('ShareCommenterService.requestSignInLink', () => {
     expect(stored.email).toBe('sam@example.co'); // normalized
     expect(stored.name).toBe('Sam Kelly');
     const ttl = stored.expiresAt.getTime() - Date.now();
-    expect(ttl).toBeGreaterThan(14 * 60 * 1000);
-    expect(ttl).toBeLessThanOrEqual(15 * 60 * 1000);
+    expect(ttl).toBeGreaterThan(23.9 * 60 * 60 * 1000);
+    expect(ttl).toBeLessThanOrEqual(24 * 60 * 60 * 1000);
 
     const mail = mailService.sendToQueue.mock.calls[0][0];
     expect(mail.to).toBe('sam@example.co');
@@ -128,9 +128,13 @@ describe('ShareCommenterService.requestSignInLink', () => {
     expect(mailService.sendToQueue).not.toHaveBeenCalled();
   });
 
-  it('silently caps links per email (same response, no email sent)', async () => {
+  it('silently caps links per email within 15 minutes (same response, no email sent)', async () => {
     const { service, commenterRepo, mailService } = build({ recentTokens: 3 });
+    const before = Date.now();
     await expect(service.requestSignInLink(requestOpts)).resolves.toBeUndefined();
+    const since = commenterRepo.countRecentSignInTokens.mock.calls[0][2].getTime();
+    expect(before - since).toBeGreaterThanOrEqual(15 * 60 * 1000 - 1000);
+    expect(before - since).toBeLessThanOrEqual(15 * 60 * 1000 + 1000);
     expect(commenterRepo.insertSignInToken).not.toHaveBeenCalled();
     expect(mailService.sendToQueue).not.toHaveBeenCalled();
   });

@@ -150,6 +150,11 @@ export class EnvironmentService {
     return this.configService.get<string>('MAIL_FROM_ADDRESS');
   }
 
+  // MXD: where replies to any Docmost email go (e.g. hello@mxd.digital)
+  getMailReplyTo(): string | undefined {
+    return this.configService.get<string>('MAIL_REPLY_TO') || undefined;
+  }
+
   getMailFromName(): string {
     return this.configService.get<string>('MAIL_FROM_NAME', 'Docmost');
   }

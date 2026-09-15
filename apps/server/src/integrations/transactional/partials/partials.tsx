@@ -1,9 +1,19 @@
-import { button as buttonStyle, container, footer, h1, logo, main } from '../css/styles';
+import {
+  brand,
+  button as buttonStyle,
+  container,
+  fontFamily,
+  footer,
+  logo,
+  main,
+} from '../css/styles';
 import {
   Body,
   Container,
   Head,
   Html,
+  Img,
+  Preview,
   Row,
   Section,
   Text,
@@ -12,15 +22,20 @@ import * as React from 'react';
 
 interface MailBodyProps {
   children: React.ReactNode;
+  // MXD: inbox preview line (the snippet shown next to the subject)
+  preview?: string;
 }
 
-export function MailBody({ children }: MailBodyProps) {
+export function MailBody({ children, preview }: MailBodyProps) {
   return (
     <Html>
       <Head />
+      {preview && <Preview>{preview}</Preview>}
       <Body style={main}>
-        <MailHeader />
-        <Container style={container}>{children}</Container>
+        <Container style={container}>
+          <MailHeader />
+          {children}
+        </Container>
         <MailFooter />
       </Body>
     </Html>
@@ -30,7 +45,7 @@ export function MailBody({ children }: MailBodyProps) {
 export function MailHeader() {
   return (
     <Section style={logo}>
-      {/* <Heading style={h1}>docmost</Heading> */}
+      <Img src={brand.logoUrl} width="112" height="27" alt="MxD" />
     </Section>
   );
 }
@@ -40,13 +55,14 @@ interface EmailButtonProps {
   children: React.ReactNode;
 }
 
+// MXD: pill button in the brand blue (table-based for Outlook).
 export function EmailButton({ href, children }: EmailButtonProps) {
   return (
     <table
       role="presentation"
       cellPadding="0"
       cellSpacing="0"
-      style={{ margin: '0 0 15px 15px' }}
+      style={{ margin: '8px 4px 24px' }}
     >
       <tr>
         <td
@@ -63,9 +79,10 @@ export function EmailButton({ href, children }: EmailButtonProps) {
               color: buttonStyle.color,
               fontFamily: buttonStyle.fontFamily,
               fontSize: buttonStyle.fontSize,
+              fontWeight: buttonStyle.fontWeight,
               textDecoration: 'none',
               display: 'inline-block',
-              padding: '8px 16px',
+              padding: buttonStyle.padding,
             }}
           >
             {children}
@@ -80,8 +97,19 @@ export function MailFooter() {
   return (
     <Section style={footer}>
       <Row>
-        <Text style={{ textAlign: 'center', color: '#706a7b' }}>
-          © {new Date().getFullYear()} Docmost, All Rights Reserved <br />
+        <Text
+          style={{
+            fontFamily,
+            textAlign: 'center',
+            color: brand.steel,
+            fontSize: '13px',
+            lineHeight: '20px',
+            margin: 0,
+          }}
+        >
+          MxD · docs.mxd.digital
+          <br />
+          Questions? Just reply to this email.
         </Text>
       </Row>
     </Section>

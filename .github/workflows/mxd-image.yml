@@ -69,6 +69,7 @@ jobs:
           src/collaboration/extensions/persistence.extension.spec.ts
           src/core/page/page-access
           src/core/mxd-data
+          src/integrations/mail/mail.service.spec.ts
           --ci
 
   mxd-db-check:

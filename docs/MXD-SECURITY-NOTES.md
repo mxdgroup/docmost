@@ -42,7 +42,7 @@ return 403).
   row in `mxd_share_commenters` (email + name). It is **not** a Docmost user and
   has no workspace or space membership.
   - **Sign-in** is an emailed single-use link. The token is 32 random bytes;
-    only its sha256 is stored. It expires in 15 minutes and is consumed
+    only its sha256 is stored. It expires in 24 hours and is consumed
     atomically, so a second use fails.
   - **Session** is an httpOnly SameSite=Lax cookie `mxdCommenterToken` holding a
     JWT with `type: share_commenter`. It is honored only by the public share

@@ -20,7 +20,10 @@ import ShareCommenterSignInEmail from '@docmost/transactional/emails/share-comme
 export const COMMENTER_COOKIE = 'mxdCommenterToken';
 export const COMMENTER_COOKIE_MAX_AGE_S = 30 * 24 * 60 * 60;
 
-const SIGN_IN_TOKEN_TTL_MS = 15 * 60 * 1000;
+// Sign-in links stay valid for 24 hours (product decision 2026-09-15); they
+// are still single-use. The per-email cap uses its own short window.
+const SIGN_IN_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const LINK_CAP_WINDOW_MS = 15 * 60 * 1000;
 const MAX_LINKS_PER_EMAIL_WINDOW = 3;
 const MAX_CLAIMS_PER_SIGN_IN = 200;
 // Only a real share page path may be the post-sign-in destination.
@@ -74,7 +77,7 @@ export class ShareCommenterService {
     }
 
     const email = normalizeEmail(opts.email);
-    const since = new Date(Date.now() - SIGN_IN_TOKEN_TTL_MS);
+    const since = new Date(Date.now() - LINK_CAP_WINDOW_MS);
     const recent = await this.commenterRepo.countRecentSignInTokens(
       opts.workspaceId,
       email,

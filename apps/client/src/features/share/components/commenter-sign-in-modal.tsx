@@ -54,7 +54,7 @@ export default function CommenterSignInModal({
           </Text>
           <Text size="xs" c="dimmed">
             {t(
-              "Open it on this device. It works once and expires in 15 minutes. Comments you've already posted from this browser will move to your account.",
+              "Open it on this device. It works once and stays valid for 24 hours. Comments you've already posted from this browser will move to your account.",
             )}
           </Text>
           <Button variant="default" onClick={close}>
