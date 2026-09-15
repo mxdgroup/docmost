@@ -98,7 +98,10 @@ export class CommentController {
 
     await this.pageAccessService.validateCanView(page, user);
 
-    return this.commentService.findByPageId(page.id, pagination);
+    // MXD: members may see a commenter account's email (hover detail).
+    return this.commentService.findByPageId(page.id, pagination, {
+      includeCommenterEmail: true,
+    });
   }
 
   @HttpCode(HttpStatus.OK)

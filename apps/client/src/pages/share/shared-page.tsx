@@ -50,11 +50,15 @@ export default function SharedPage() {
       setCommentsContext(null);
       return;
     }
-    setCommentsContext({ shareId: data.share.id, pageId: data.page.id });
+    setCommentsContext({
+      shareId: data.share.id,
+      pageId: data.page.id,
+      sharePath: `/share/${data.share.key}/p/${pageSlug}`,
+    });
     return () => {
       setCommentsContext(null);
     };
-  }, [data?.share.id, data?.page.id, commentsEnabled, setCommentsContext]);
+  }, [data?.share.id, data?.page.id, data?.share.key, pageSlug, commentsEnabled, setCommentsContext]);
 
   useShareCommentHighlightClicks(commentsEnabled);
 

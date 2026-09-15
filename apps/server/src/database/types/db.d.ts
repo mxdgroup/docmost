@@ -214,6 +214,8 @@ export interface Comments {
   resolvedAt: Timestamp | null;
   resolvedById: string | null;
   resolvedByGuestName: string | null;
+  commenterId: string | null;
+  resolvedByCommenterId: string | null;
   selection: string | null;
   spaceId: string;
   type: string | null;
@@ -743,6 +745,27 @@ export interface MxdForms {
   workspaceId: string;
 }
 
+export interface MxdShareCommenters {
+  createdAt: Generated<Timestamp>;
+  email: string;
+  id: Generated<string>;
+  lastSignInAt: Timestamp | null;
+  name: string;
+  updatedAt: Generated<Timestamp>;
+  workspaceId: string;
+}
+
+export interface MxdCommenterSignInTokens {
+  createdAt: Generated<Timestamp>;
+  email: string;
+  expiresAt: Timestamp;
+  id: Generated<string>;
+  name: string | null;
+  tokenHash: string;
+  usedAt: Timestamp | null;
+  workspaceId: string;
+}
+
 export interface MxdGuestCommentTokens {
   commentId: string;
   createdAt: Generated<Timestamp>;
@@ -791,6 +814,8 @@ export interface DB {
   mxdRecordHistory: MxdRecordHistory;
   mxdForms: MxdForms;
   mxdGuestCommentTokens: MxdGuestCommentTokens;
+  mxdShareCommenters: MxdShareCommenters;
+  mxdCommenterSignInTokens: MxdCommenterSignInTokens;
   notifications: Notifications;
   pageAccess: PageAccess;
   pageTransclusionReferences: PageTransclusionReferences;

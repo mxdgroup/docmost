@@ -1,4 +1,4 @@
-import { Group, Text, Box, Badge } from "@mantine/core";
+import { Group, Text, Box, Badge, Tooltip } from "@mantine/core";
 import React, { useEffect, useRef, useState } from "react";
 import classes from "./comment.module.css";
 import { useAtom, useAtomValue } from "jotai";
@@ -141,9 +141,17 @@ function CommentListItem({
 
         <div style={{ flex: 1 }}>
           <Group justify="space-between" wrap="nowrap">
-            <Text size="sm" fw={500} lineClamp={1}>
-              {authorName}
-            </Text>
+            {/* MXD: verified external commenters show their email on hover */}
+            <Tooltip
+              label={comment.commenter?.email}
+              disabled={!comment.commenter?.email}
+              withArrow
+              openDelay={300}
+            >
+              <Text size="sm" fw={500} lineClamp={1}>
+                {authorName}
+              </Text>
+            </Tooltip>
 
             <div style={{ visibility: hovered ? "visible" : "hidden" }}>
               {!comment.parentCommentId && canComment && canResolve && (

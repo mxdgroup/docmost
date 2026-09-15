@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { Dialog, Stack, Text } from "@mantine/core";
 import { useClickOutside } from "@mantine/hooks";
-import { useAtom, useAtomValue } from "jotai";
+import { useAtom } from "jotai";
 import { useTranslation } from "react-i18next";
 import {
   readOnlyCommentDataAtom,
@@ -13,7 +13,7 @@ import {
 } from "@/features/comment/atoms/comment-atom";
 import CommentEditor from "@/features/comment/components/comment-editor";
 import CommentActions from "@/features/comment/components/comment-actions";
-import { guestNameAtom } from "@/features/share/atoms/share-comments-atom";
+import { useShareIdentity } from "@/features/share/hooks/use-share-identity";
 import { useCreateShareCommentMutation } from "@/features/share/queries/share-comment-query";
 import { useOpenShareComments } from "@/features/share/hooks/use-share-comments-aside";
 import GuestNameInput from "@/features/share/components/guest-name-input";
@@ -29,7 +29,7 @@ export default function GuestCommentDialog({
   const [content, setContent] = useState<any>(null);
   const [, setShowPopup] = useAtom(showReadOnlyCommentPopupAtom);
   const [selectionData, setSelectionData] = useAtom(readOnlyCommentDataAtom);
-  const guestName = useAtomValue(guestNameAtom);
+  const identity = useShareIdentity();
   const createMutation = useCreateShareCommentMutation(shareId, pageId);
   const openComments = useOpenShareComments();
 
@@ -45,10 +45,10 @@ export default function GuestCommentDialog({
   });
 
   const save = async () => {
-    if (!selectionData || !content || !guestName) return;
+    if (!selectionData || !content || !identity.canPost) return;
     try {
       const created = await createMutation.mutateAsync({
-        guestName,
+        guestName: identity.guestNameForRequest,
         content: JSON.stringify(content),
         selection: selectionData.selectedText,
         yjsSelection: selectionData.yjsSelection,
@@ -80,14 +80,14 @@ export default function GuestCommentDialog({
             “{selectionData.selectedText}”
           </Text>
         )}
-        {!guestName ? (
+        {!identity.canPost ? (
           <GuestNameInput autoFocus />
         ) : (
           <Text size="sm" fw={500}>
-            {guestName}
+            {identity.displayName}
           </Text>
         )}
-        {guestName && (
+        {identity.canPost && (
           <>
             <CommentEditor
               onUpdate={setContent}

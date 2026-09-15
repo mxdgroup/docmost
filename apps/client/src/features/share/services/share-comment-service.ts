@@ -18,7 +18,8 @@ export async function getShareComments(params: {
 export async function createShareComment(data: {
   shareId: string;
   pageId: string;
-  guestName: string;
+  // omitted when signed in with a commenter account
+  guestName?: string;
   content: string;
   parentCommentId?: string;
   selection?: string;
@@ -34,7 +35,7 @@ export async function createShareComment(data: {
 export async function updateShareComment(data: {
   shareId: string;
   commentId: string;
-  guestToken: string;
+  guestToken?: string;
   content: string;
 }): Promise<IComment> {
   const req = await api.post<IComment>("/shares/comments/update", data);
@@ -44,7 +45,7 @@ export async function updateShareComment(data: {
 export async function deleteShareComment(data: {
   shareId: string;
   commentId: string;
-  guestToken: string;
+  guestToken?: string;
 }): Promise<void> {
   await api.post("/shares/comments/delete", data);
 }
@@ -53,8 +54,47 @@ export async function resolveShareComment(data: {
   shareId: string;
   commentId: string;
   resolved: boolean;
-  guestName: string;
+  guestName?: string;
 }): Promise<IComment> {
   const req = await api.post<IComment>("/shares/comments/resolve", data);
   return req.data;
+}
+
+// Commenter accounts (optional sign-in for share-link commenters).
+export interface ShareCommenter {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export async function getShareCommenter(): Promise<ShareCommenter | null> {
+  const req = await api.post<{ commenter: ShareCommenter | null }>(
+    "/shares/commenter/me",
+  );
+  return req.data.commenter;
+}
+
+export async function requestCommenterSignInLink(data: {
+  shareId: string;
+  pageId: string;
+  email: string;
+  name?: string;
+  returnPath: string;
+}): Promise<void> {
+  await api.post("/shares/commenter/request-link", data);
+}
+
+export async function verifyCommenterSignIn(data: {
+  token: string;
+  guestComments: { commentId: string; guestToken: string }[];
+}): Promise<{ commenter: ShareCommenter; claimed: number }> {
+  const req = await api.post<{ commenter: ShareCommenter; claimed: number }>(
+    "/shares/commenter/verify",
+    data,
+  );
+  return req.data;
+}
+
+export async function signOutCommenter(): Promise<void> {
+  await api.post("/shares/commenter/sign-out");
 }

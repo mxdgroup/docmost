@@ -21,6 +21,10 @@ export interface IComment {
   // MXD: display name of the share guest who wrote / resolved this comment.
   guestName?: string | null;
   resolvedByGuestName?: string | null;
+  // MXD: verified commenter account (share-link sign-in); email only for members.
+  commenterId?: string | null;
+  commenter?: { id: string; name: string; email?: string } | null;
+  resolvedByCommenter?: { id: string; name: string } | null;
   yjsSelection?: {
     anchor: any;
     head: any;

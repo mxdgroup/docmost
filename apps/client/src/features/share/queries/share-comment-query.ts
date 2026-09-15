@@ -125,7 +125,7 @@ export function useUpdateShareCommentMutation(shareId: string, pageId: string) {
   const { t } = useTranslation();
   const replace = useReplaceInCache(shareId, pageId);
   return useMutation({
-    mutationFn: (data: { commentId: string; guestToken: string; content: string }) =>
+    mutationFn: (data: { commentId: string; guestToken?: string; content: string }) =>
       updateShareComment({ shareId, ...data }),
     onSuccess: replace,
     onError: (err) => {
@@ -141,7 +141,7 @@ export function useResolveShareCommentMutation(shareId: string, pageId: string) 
   const { t } = useTranslation();
   const replace = useReplaceInCache(shareId, pageId);
   return useMutation({
-    mutationFn: (data: { commentId: string; resolved: boolean; guestName: string }) =>
+    mutationFn: (data: { commentId: string; resolved: boolean; guestName?: string }) =>
       resolveShareComment({ shareId, ...data }),
     onSuccess: (updated, variables) => {
       replace(updated);
@@ -164,7 +164,7 @@ export function useDeleteShareCommentMutation(shareId: string, pageId: string) {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
   return useMutation({
-    mutationFn: (data: { commentId: string; guestToken: string }) =>
+    mutationFn: (data: { commentId: string; guestToken?: string }) =>
       deleteShareComment({ shareId, ...data }),
     onSuccess: (_data, { commentId }) => {
       forgetGuestCommentToken(commentId);

@@ -54,3 +54,11 @@ export function forgetGuestCommentToken(commentId: string): void {
     // ignore
   }
 }
+
+// Every ownership token this browser holds — offered on commenter sign-in so
+// the server can move the comments it can verify onto the account.
+export function getAllGuestCommentTokens(): { commentId: string; guestToken: string }[] {
+  return Object.entries(readTokens())
+    .filter(([, token]) => typeof token === "string" && token.length > 0)
+    .map(([commentId, guestToken]) => ({ commentId, guestToken }));
+}

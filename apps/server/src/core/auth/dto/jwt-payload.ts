@@ -3,6 +3,8 @@ export enum JwtType {
   COLLAB = 'collab',
   // MXD: share-scoped anonymous collab session (no user id — ever)
   SHARE_COLLAB = 'share_collab',
+  // MXD: commenter-account session for public share links (not a Docmost user)
+  SHARE_COMMENTER = 'share_commenter',
   EXCHANGE = 'exchange',
   ATTACHMENT = 'attachment',
   MFA_TOKEN = 'mfa_token',
@@ -31,6 +33,14 @@ export type JwtShareCollabPayload = {
   pageId: string;
   workspaceId: string;
   type: 'share_collab';
+};
+
+// MXD: identifies a share-link commenter account. Honored ONLY by the public
+// /shares comment endpoints; every Docmost auth path checks `type` and rejects it.
+export type JwtShareCommenterPayload = {
+  sub: string; // mxd_share_commenters.id
+  workspaceId: string;
+  type: 'share_commenter';
 };
 
 export type JwtExchangePayload = {
