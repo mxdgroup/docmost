@@ -1,4 +1,8 @@
-import { Extension, onAuthenticatePayload } from '@hocuspocus/server';
+import {
+  Extension,
+  onAuthenticatePayload,
+  beforeHandleMessagePayload,
+} from '@hocuspocus/server';
 import {
   Injectable,
   Logger,
@@ -121,9 +125,49 @@ export class AuthenticationExtension implements Extension {
     };
   }
 
+  // Hocuspocus awaits this hook BEFORE applying SyncStep2, updates, awareness
+  // and stateless messages. beforeSync is not awaited in the installed version.
+  // Never cache this decision: a revoked/narrowed link must reject the next
+  // mutation even on an already authenticated socket (including Redis proxies).
+  async beforeHandleMessage(data: beforeHandleMessagePayload) {
+    const principal = data.context?.anonymousShare;
+    if (!principal) return;
+    if (principal.revoked) throw new UnauthorizedException();
+
+    try {
+      const current = await this.authenticateShareCollab(
+        {
+          token: principal.token,
+          connectionConfig: { readOnly: true },
+        } as onAuthenticatePayload,
+        getPageId(data.documentName),
+      );
+      if (
+        principal.revoked ||
+        current.anonymousShare.sessionMode !== principal.sessionMode
+      ) {
+        throw new UnauthorizedException();
+      }
+      // Comment connections remain read-only, including malicious sync uploads.
+      data.connection.readOnly =
+        current.anonymousShare.sessionMode !== 'writable';
+    } catch (error) {
+      principal.revoked = true;
+      data.connection.readOnly = true;
+      data.connection.sendStateless(
+        JSON.stringify({ type: 'share.access-denied' }),
+      );
+      data.connection.close({
+        code: 4403,
+        reason: 'Public share access changed or expired',
+      });
+      throw error;
+    }
+  }
+
   // MXD: anonymous share-scoped session. No user is ever attached to the
-  // connection context; the persistence layer treats a missing user as
-  // "preserve existing attribution".
+  // connection context; persistence stores the guest label separately from
+  // workspace-user attribution.
   private async authenticateShareCollab(
     data: onAuthenticatePayload,
     pageId: string,
@@ -132,10 +176,7 @@ export class AuthenticationExtension implements Extension {
 
     let payload: JwtShareCollabPayload;
     try {
-      payload = await this.tokenService.verifyJwt(
-        token,
-        JwtType.SHARE_COLLAB,
-      );
+      payload = await this.tokenService.verifyJwt(token, JwtType.SHARE_COLLAB);
     } catch {
       throw new UnauthorizedException('Invalid collab token');
     }
@@ -161,8 +202,7 @@ export class AuthenticationExtension implements Extension {
     // The session capability comes from the share's CURRENT mode and flags,
     // never from the token: edit -> writable, comment -> read-only (guests
     // need the live doc only to anchor inline comments). Revoked, downgraded,
-    // or flag-disabled shares cut off sessions on the next (re)connect —
-    // acceptable staleness = token TTL (10m).
+    // or flag-disabled shares are also checked before every incoming message.
     const sessionMode = shareCollabSessionMode(share.mode, {
       shareEditEnabled: this.environmentService.isShareEditEnabled(),
       guestCommentsEnabled:
@@ -174,7 +214,7 @@ export class AuthenticationExtension implements Extension {
 
     // Parity with the mint path: honor the workspace/space public-sharing kill
     // switch on reconnect too, so disabling sharing cuts off anonymous editors
-    // within the token TTL rather than only blocking new mints.
+    // before accepting another message rather than only blocking new mints.
     const sharingAllowed = await this.shareRepo.isSharingAllowed(
       share.workspaceId,
       share.spaceId,
@@ -220,7 +260,13 @@ export class AuthenticationExtension implements Extension {
 
     return {
       user: null,
-      anonymousShare: { shareId: share.id, pageId },
+      anonymousShare: {
+        shareId: share.id,
+        pageId,
+        token,
+        sessionMode,
+        guestId: payload.guestId,
+      },
     };
   }
 }

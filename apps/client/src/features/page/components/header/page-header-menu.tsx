@@ -1,4 +1,11 @@
-import { ActionIcon, Group, Menu, Text, ThemeIcon, Tooltip } from "@mantine/core";
+import {
+  ActionIcon,
+  Group,
+  Menu,
+  Text,
+  ThemeIcon,
+  Tooltip,
+} from "@mantine/core";
 import {
   IconWorld,
   IconArrowRight,
@@ -261,7 +268,10 @@ function PageActionMenu({ readOnly }: PageActionMenuProps) {
           <Menu.Item
             leftSection={
               isFavorited ? (
-                <IconStarFilled size={16} color="var(--mantine-color-yellow-5)" />
+                <IconStarFilled
+                  size={16}
+                  color="var(--mantine-color-yellow-5)"
+                />
               ) : (
                 <IconStar size={16} />
               )
@@ -371,7 +381,10 @@ function PageActionMenu({ readOnly }: PageActionMenuProps) {
             <Group px="sm" wrap="nowrap" style={{ cursor: "pointer" }}>
               <Tooltip
                 label={t("Edited by {{name}} {{time}}", {
-                  name: page.lastUpdatedBy.name,
+                  name:
+                    page.lastUpdatedByGuest ??
+                    page.lastUpdatedBy?.name ??
+                    t("Guest"),
                   time: pageUpdatedAt,
                 })}
                 position="left-start"

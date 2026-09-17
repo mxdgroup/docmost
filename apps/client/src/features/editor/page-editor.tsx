@@ -157,6 +157,9 @@ export default function PageEditor({
             queryClient.setQueryData(["pages", slugId], {
               ...pageData,
               updatedAt: message.updatedAt,
+              ...("lastUpdatedByGuest" in message && {
+                lastUpdatedByGuest: message.lastUpdatedByGuest,
+              }),
               ...(message.lastUpdatedBy && {
                 lastUpdatedBy: message.lastUpdatedBy,
               }),

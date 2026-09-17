@@ -67,6 +67,8 @@ jobs:
           src/core/share
           src/collaboration/extensions/authentication.extension.spec.ts
           src/collaboration/extensions/persistence.extension.spec.ts
+          src/collaboration/extensions/public-share-collaboration.spec.ts
+          src/core/attachment/services/guest-upload.spec.ts
           src/core/page/page-access
           src/core/mxd-data
           src/integrations/mail/mail.service.spec.ts

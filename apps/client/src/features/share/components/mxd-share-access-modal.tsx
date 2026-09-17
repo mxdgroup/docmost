@@ -14,7 +14,10 @@ import {
   useUpdateShareMutation,
 } from "@/features/share/queries/share-query.ts";
 import { ShareMode } from "@/features/share/types/share.types.ts";
-import { isShareEditEnabled, isShareGuestCommentsEnabled } from "@/lib/config.ts";
+import {
+  isShareEditEnabled,
+  isShareGuestCommentsEnabled,
+} from "@/lib/config.ts";
 
 // MXD fork — public-link access level (view / comment / edit).
 //
@@ -35,14 +38,18 @@ interface Props {
   onClose: () => void;
 }
 
-export default function MxdShareAccessModal({ pageId, opened, onClose }: Props) {
+export default function MxdShareAccessModal({
+  pageId,
+  opened,
+  onClose,
+}: Props) {
   const { t } = useTranslation();
   const { data: share, isLoading } = useShareForPageQuery(pageId);
   const updateShareMutation = useUpdateShareMutation();
 
   const modeOptions = useMemo(() => {
     const options = [{ label: t("Can view"), value: "view" }];
-    if (isShareGuestCommentsEnabled() || isShareEditEnabled()) {
+    if (isShareGuestCommentsEnabled()) {
       options.push({ label: t("Can comment"), value: "comment" });
     }
     if (isShareEditEnabled()) {

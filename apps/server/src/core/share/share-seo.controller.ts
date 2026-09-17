@@ -60,16 +60,25 @@ export class ShareSeoController {
 
       const pageId = this.extractPageSlugId(pageSlug);
 
-      const share = await this.shareService.getShareForPage(
-        pageId,
-        workspace.id,
-      );
-
-      if (!share) {
+      let shared;
+      try {
+        shared = await this.shareService.getSharedPage(
+          { shareId, pageId },
+          workspace.id,
+        );
+        if (
+          !(await this.shareService.isSharingAllowed(
+            workspace.id,
+            shared.share.spaceId,
+          ))
+        ) {
+          return this.sendIndex(indexFilePath, res);
+        }
+      } catch {
         return this.sendIndex(indexFilePath, res);
       }
-
-      const rawTitle = htmlEscape(share?.sharedPage.title ?? 'untitled');
+      const share = shared.share;
+      const rawTitle = htmlEscape(shared.page.title ?? 'untitled');
       const metaTitle =
         rawTitle.length > 80 ? `${rawTitle.slice(0, 77)}…` : rawTitle;
 

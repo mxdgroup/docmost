@@ -16,6 +16,8 @@ To get started with Docmost, please refer to our [documentation](https://docmost
 
 ## Features
 
+This MXD fork supports [public links with view, comment or edit access](docs/PUBLIC-SHARE-EDITING.md), including anonymous collaborative editing. See [MXD-FORK.md](MXD-FORK.md) for release operations and [security notes](docs/MXD-SECURITY-NOTES.md) for permission boundaries.
+
 - Real-time collaboration
 - Diagrams (Draw.io, Excalidraw and Mermaid)
 - Spaces
@@ -59,4 +61,3 @@ Special thanks to;
 <img width="48" alt="Algolia-mark-square-white" src="https://github.com/user-attachments/assets/6ccad04a-9589-4965-b6a1-d5cb1f4f9e94" />
 
 [Algolia](https://www.algolia.com/) for providing full-text search to the docs.
-

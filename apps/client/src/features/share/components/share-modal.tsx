@@ -11,11 +11,7 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
-import {
-  IconExternalLink,
-  IconWorld,
-  IconLock,
-} from "@tabler/icons-react";
+import { IconExternalLink, IconWorld, IconLock } from "@tabler/icons-react";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   useCreateShareMutation,
@@ -65,7 +61,7 @@ export default function ShareModal({ readOnly }: ShareModalProps) {
   // MXD: elevated share modes. The server enforces; flags only drive UI.
   const modeOptions = useMemo(() => {
     const options = [{ label: t("Can view"), value: "view" }];
-    if (isShareGuestCommentsEnabled() || isShareEditEnabled()) {
+    if (isShareGuestCommentsEnabled()) {
       options.push({ label: t("Can comment"), value: "comment" });
     }
     if (isShareEditEnabled()) {
@@ -147,7 +143,6 @@ export default function ShareModal({ readOnly }: ShareModalProps) {
       // query invalidation will revert the UI
     }
   };
-
 
   const shareLink = useMemo(
     () => (

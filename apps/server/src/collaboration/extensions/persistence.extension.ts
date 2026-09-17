@@ -160,18 +160,12 @@ export class PersistenceExtension implements Extension {
           //this.logger.debug('Contributors error:' + err?.['message']);
         }
 
-        // MXD: anonymous share sessions have no context.user. Attribution is
-        // preserved (field omitted) rather than nulled or faked — a fake id
-        // would violate the users FK, and the old unguarded access threw
-        // inside this try/catch, silently losing every anonymous write.
         await this.pageRepo.updatePage(
           {
             content: tiptapJson,
             textContent: textContent,
             ydoc: ydocState,
-            ...(context?.user?.id
-              ? { lastUpdatedById: context.user.id }
-              : {}),
+            ...editorAttribution(context),
             contributorIds: contributorIds,
           },
           pageId,
@@ -189,7 +183,7 @@ export class PersistenceExtension implements Extension {
         JSON.stringify({
           type: 'page.updated',
           updatedAt: new Date().toISOString(),
-          lastUpdatedById: context?.user?.id,
+          ...editorAttribution(context),
           lastUpdatedBy: context?.user
             ? {
                 id: context.user?.id,
@@ -326,4 +320,20 @@ export class PersistenceExtension implements Extension {
       );
     }
   }
+}
+
+// A guest is never a workspace user. Keep attribution without inventing a
+// users FK, and clear stale member attribution for an anonymous content edit.
+export function editorAttribution(context: any) {
+  if (context?.user?.id) {
+    return { lastUpdatedById: context.user.id, lastUpdatedByGuest: null };
+  }
+  if (context?.anonymousShare) {
+    const id = context.anonymousShare.guestId;
+    return {
+      lastUpdatedById: null,
+      lastUpdatedByGuest: id ? `Guest ${id.slice(0, 6)}` : 'Guest',
+    };
+  }
+  return {};
 }

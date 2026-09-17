@@ -13,7 +13,7 @@ import {
   prepareFile,
   validateFileType,
 } from '../attachment.utils';
-import { v4 as uuid4, v7 as uuid7 } from 'uuid';
+import { v4 as uuid4, v7 as uuid7, validate as isUuid } from 'uuid';
 import { AttachmentRepo } from '@docmost/db/repos/attachment/attachment.repo';
 import { AttachmentType, validImageExtensions } from '../attachment.constants';
 import { KyselyDB, KyselyTransaction } from '@docmost/db/types/kysely.types';
@@ -44,10 +44,11 @@ export class AttachmentService {
   async uploadFile(opts: {
     filePromise: Promise<MultipartFile>;
     pageId?: string;
-    userId: string;
+    userId: string | null;
     spaceId: string;
     workspaceId: string;
     attachmentId?: string;
+    validateAccess?: () => Promise<unknown>;
   }) {
     const { filePromise, pageId, spaceId, userId, workspaceId } = opts;
     const preparedFile: PreparedFile = await prepareFile(filePromise, {
@@ -56,6 +57,7 @@ export class AttachmentService {
 
     let isUpdate = false;
     let attachmentId = null;
+    let previousFilePath: string | undefined;
 
     // passing attachmentId to allow for updating diagrams
     // instead of creating new files for each save
@@ -77,28 +79,33 @@ export class AttachmentService {
         throw new BadRequestException('File attachment does not match');
       }
       attachmentId = opts.attachmentId;
+      previousFilePath = existingAttachment.filePath;
       isUpdate = true;
     } else {
       attachmentId = uuid7();
     }
 
-    const filePath = `${getAttachmentFolderPath(AttachmentType.File, workspaceId)}/${attachmentId}/${preparedFile.fileName}`;
+    // Stage guest replacements under a new object key so a revocation during
+    // streaming cannot overwrite an existing attachment before the final check.
+    const versionPath = opts.validateAccess ? `${uuid4()}/` : '';
+    const filePath = `${getAttachmentFolderPath(AttachmentType.File, workspaceId)}/${attachmentId}/${versionPath}${preparedFile.fileName}`;
 
     const { stream, getBytesRead } = createByteCountingStream(
       preparedFile.multiPartFile.file,
     );
 
-    await this.uploadToDrive(filePath, stream);
-
-    // Update fileSize from the consumed stream
-    preparedFile.fileSize = getBytesRead();
-
     let attachment: Attachment = null;
+    let persisted = false;
     try {
+      await opts.validateAccess?.();
+      await this.uploadToDrive(filePath, stream);
+      preparedFile.fileSize = getBytesRead();
+      await opts.validateAccess?.();
       if (isUpdate) {
         attachment = await this.attachmentRepo.updateAttachment(
           {
             fileSize: preparedFile.fileSize,
+            filePath,
             updatedAt: new Date(),
           },
           attachmentId,
@@ -113,6 +120,28 @@ export class AttachmentService {
           spaceId,
           workspaceId,
           pageId,
+        });
+      }
+
+      persisted = true;
+
+      // Guest version keys are immutable and can be removed after publication.
+      // Do not remove canonical member keys: another member upload can reuse
+      // one concurrently. Only storage is deleted; the attachment row stays.
+      const attachmentFolder = `${getAttachmentFolderPath(AttachmentType.File, workspaceId)}/${attachmentId}/`;
+      const previousVersion = previousFilePath?.startsWith(attachmentFolder)
+        ? previousFilePath.slice(attachmentFolder.length).split('/')
+        : [];
+      if (
+        previousFilePath !== filePath &&
+        previousVersion.length === 2 &&
+        isUuid(previousVersion[0])
+      ) {
+        await this.storageService.delete(previousFilePath).catch((error) => {
+          this.logger.warn(
+            'Unable to remove superseded attachment version',
+            error,
+          );
         });
       }
 
@@ -133,8 +162,12 @@ export class AttachmentService {
         );
       }
     } catch (err) {
-      // delete uploaded file on error
+      if (opts.validateAccess && !persisted) {
+        await this.storageService.delete(filePath).catch(() => undefined);
+      }
+      // Do not report a successful upload when persistence failed.
       this.logger.error(err);
+      if (!persisted) throw err;
     }
 
     return attachment;
@@ -254,7 +287,7 @@ export class AttachmentService {
     preparedFile: PreparedFile;
     filePath: string;
     type: AttachmentType;
-    userId: string;
+    userId: string | null;
     workspaceId: string;
     pageId?: string;
     spaceId?: string;

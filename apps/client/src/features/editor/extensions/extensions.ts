@@ -424,7 +424,10 @@ export const mainExtensions = [
   }),
 ] as any;
 
-type CollabExtensions = (provider: HocuspocusProvider, user: IUser) => any[];
+type CollabExtensions = (
+  provider: HocuspocusProvider,
+  user: Pick<IUser, "name">,
+) => any[];
 
 const TEMPLATE_EXCLUDED_SLASH_ITEMS = new Set([
   "Image",
@@ -435,7 +438,7 @@ const TEMPLATE_EXCLUDED_SLASH_ITEMS = new Set([
   "Audio",
   "Synced block",
   "Base (Inline)",
-  "Kanban"
+  "Kanban",
 ]);
 
 const TemplateSlashCommand = Command.configure({

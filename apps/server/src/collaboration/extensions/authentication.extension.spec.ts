@@ -36,13 +36,21 @@ function build(opts: {
   };
   const userRepo = { findById: jest.fn().mockResolvedValue(opts.user ?? null) };
   const pageRepo = {
-    findById: jest.fn().mockResolvedValue(
-      'page' in opts ? opts.page : { id: PAGE, workspaceId: WS, deletedAt: null },
-    ),
+    findById: jest
+      .fn()
+      .mockResolvedValue(
+        'page' in opts
+          ? opts.page
+          : { id: PAGE, workspaceId: WS, deletedAt: null },
+      ),
   };
-  const spaceMemberRepo = { getUserSpaceRoles: jest.fn().mockResolvedValue([]) };
+  const spaceMemberRepo = {
+    getUserSpaceRoles: jest.fn().mockResolvedValue([]),
+  };
   const pagePermissionRepo = {
-    hasRestrictedAncestor: jest.fn().mockResolvedValue(opts.restricted ?? false),
+    hasRestrictedAncestor: jest
+      .fn()
+      .mockResolvedValue(opts.restricted ?? false),
     canUserEditPage: jest.fn().mockResolvedValue({
       hasAnyRestriction: false,
       canAccess: true,
@@ -105,6 +113,9 @@ describe('AuthenticationExtension share-collab branch', () => {
     expect((result as any).anonymousShare).toEqual({
       shareId: SHARE,
       pageId: PAGE,
+      token: 'tok',
+      sessionMode: 'writable',
+      guestId: undefined,
     });
     expect(data.connectionConfig.readOnly).toBe(false);
   });
@@ -278,5 +289,94 @@ describe('AuthenticationExtension share-collab branch', () => {
     });
     const result = await ext.onAuthenticate(payloadFor());
     expect(result.user).toEqual(user);
+  });
+});
+
+describe('Live public share message authorization', () => {
+  const connection = () => ({
+    readOnly: false,
+    sendStateless: jest.fn(),
+    close: jest.fn(),
+  });
+
+  it.each(['comment', 'view', null])(
+    'rejects the next edit after downgrade to %s without reconnect',
+    async (mode) => {
+      const { ext, shareRepo } = build({
+        tokenPayload: validPayload,
+        share: editShare,
+      });
+      const context = await ext.onAuthenticate(payloadFor());
+      shareRepo.findById.mockResolvedValue({ ...editShare, mode });
+      const conn = connection();
+      await expect(
+        ext.beforeHandleMessage({
+          context,
+          documentName: DOC,
+          connection: conn,
+        } as any),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(conn.readOnly).toBe(true);
+      expect(conn.close).toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    'deleted',
+    'scope',
+    'restricted',
+    'sharing-disabled',
+    'expired',
+    'other-document',
+  ])('rejects an established session after %s', async (change) => {
+    const { ext, shareRepo, pagePermissionRepo, tokenService } = build({
+      tokenPayload: validPayload,
+      share: editShare,
+    });
+    const context = await ext.onAuthenticate(payloadFor());
+    if (change === 'deleted') shareRepo.findById.mockResolvedValue(null);
+    if (change === 'scope')
+      shareRepo.isPageWithinShareScope.mockResolvedValue(false);
+    if (change === 'restricted')
+      pagePermissionRepo.hasRestrictedAncestor.mockResolvedValue(true);
+    if (change === 'sharing-disabled')
+      shareRepo.isSharingAllowed.mockResolvedValue(false);
+    if (change === 'expired')
+      tokenService.verifyJwt.mockRejectedValue(new UnauthorizedException());
+    const conn = connection();
+    await expect(
+      ext.beforeHandleMessage({
+        context,
+        documentName: change === 'other-document' ? 'page.other' : DOC,
+        connection: conn,
+      } as any),
+    ).rejects.toBeDefined();
+    expect(conn.close).toHaveBeenCalled();
+  });
+
+  it('rechecks each message and keeps comment sessions read-only', async () => {
+    const { ext, shareRepo } = build({
+      tokenPayload: validPayload,
+      share: { ...editShare, mode: 'comment' },
+    });
+    const context = await ext.onAuthenticate(payloadFor());
+    const conn = connection();
+    for (let i = 0; i < 2; i++)
+      await ext.beforeHandleMessage({
+        context,
+        documentName: DOC,
+        connection: conn,
+      } as any);
+    expect(shareRepo.findById).toHaveBeenCalledTimes(3);
+    expect(conn.readOnly).toBe(true);
+    expect(conn.close).not.toHaveBeenCalled();
+  });
+
+  it('does not apply public-share gates to authenticated workspace sessions', async () => {
+    const { ext, shareRepo } = build({});
+    await ext.beforeHandleMessage({
+      context: { user: { id: 'member' } },
+    } as any);
+    expect(shareRepo.findById).not.toHaveBeenCalled();
   });
 });

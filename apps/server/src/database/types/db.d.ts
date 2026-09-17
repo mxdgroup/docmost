@@ -45,7 +45,7 @@ export interface ApiKeys {
 export interface Attachments {
   aiChatId: string | null;
   createdAt: Generated<Timestamp>;
-  creatorId: string;
+  creatorId: string | null;
   deletedAt: Timestamp | null;
   fileExt: string;
   fileName: string;
@@ -314,6 +314,7 @@ export interface PageHistory {
 }
 
 export interface Pages {
+  lastUpdatedByGuest: string | null;
   content: Json | null;
   contributorIds: Generated<string[] | null>;
   coverPhoto: string | null;

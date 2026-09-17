@@ -69,6 +69,7 @@ export interface ICreateShare {
 export type IUpdateShare = ICreateShare & { shareId: string; pageId?: string };
 
 export interface IShareInfoInput {
+  shareId?: string;
   pageId: string;
 }
 

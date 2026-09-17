@@ -29,6 +29,7 @@ export default function SharedPage() {
 
   const { data, isLoading, isError, error } = useSharePageQuery({
     pageId: extractPageSlugId(pageSlug),
+    shareId,
   });
 
   const sharedTreeData = useAtomValue(sharedTreeDataAtom);
@@ -58,14 +59,20 @@ export default function SharedPage() {
     return () => {
       setCommentsContext(null);
     };
-  }, [data?.share.id, data?.page.id, data?.share.key, pageSlug, commentsEnabled, setCommentsContext]);
+  }, [
+    data?.share.id,
+    data?.page.id,
+    data?.share.key,
+    pageSlug,
+    commentsEnabled,
+    setCommentsContext,
+  ]);
 
   useShareCommentHighlightClicks(commentsEnabled);
 
   useEffect(() => {
     if (shareId && data) {
       if (data.share.key !== shareId) {
-
         // Check if the current page is part of the active sharing tree (sidebar) - If we are part of it, we will not redirect, keeping the sidebar visible.
         const isPartOfTree =
           sharedTreeData && isPageInTree(sharedTreeData, data.page.slugId);
@@ -120,7 +127,6 @@ export default function SharedPage() {
           />
         )}
       </Container>
-
     </div>
   );
 }

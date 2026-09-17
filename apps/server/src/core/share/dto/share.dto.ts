@@ -150,3 +150,9 @@ export class ShareGuestCommentResolveDto extends ShareGuestCommentTargetDto {
   @MaxLength(100)
   guestName?: string;
 }
+
+export class ShareTitleDto extends ShareCollabTokenDto {
+  @IsString()
+  @MaxLength(1000)
+  title: string;
+}

@@ -1,3 +1,6 @@
+jest.mock('../../collaboration/collaboration.gateway', () => ({
+  CollaborationGateway: class {},
+}));
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ShareService } from './share.service';
 import { ShareMode } from './share-mode';
@@ -48,6 +51,7 @@ function buildService(opts: {
     tokenService as any,
     {} as any, // transclusionService
     environmentService as any,
+    { handleYjsEvent: jest.fn() } as any,
   );
   if (opts.sharingAllowed !== undefined || true) {
     jest
@@ -156,7 +160,6 @@ describe('ShareService share mode', () => {
     const patch = shareRepo.updateShare.mock.calls[0][0];
     expect(patch).not.toHaveProperty('mode');
   });
-
 });
 
 describe('ShareService.mintShareCollabToken', () => {
@@ -179,11 +182,16 @@ describe('ShareService.mintShareCollabToken', () => {
       pageById: livePage,
     });
     const result = await service.mintShareCollabToken('sh-1', page.id, wsId);
-    expect(result).toEqual({ token: 'signed-token', readOnly: false });
+    expect(result).toMatchObject({
+      token: 'signed-token',
+      readOnly: false,
+      guest: { id: expect.any(String), name: expect.stringMatching(/^Guest /) },
+    });
     expect(tokenService.generateShareCollabToken).toHaveBeenCalledWith({
       shareId: 'sh-1',
       pageId: page.id,
       workspaceId: wsId,
+      guestId: result.guest.id,
     });
   });
 
@@ -234,7 +242,7 @@ describe('ShareService.mintShareCollabToken', () => {
       pageById: livePage,
     });
     const result = await service.mintShareCollabToken('sh-1', page.id, wsId);
-    expect(result).toEqual({ token: 'signed-token', readOnly: true });
+    expect(result).toMatchObject({ token: 'signed-token', readOnly: true });
     expect(tokenService.generateShareCollabToken).toHaveBeenCalled();
   });
 
@@ -284,5 +292,66 @@ describe('ShareService.mintShareCollabToken', () => {
         service.mintShareCollabToken('sh-1', page.id, wsId),
       ).rejects.toBeInstanceOf(NotFoundException);
     }
+  });
+});
+
+describe('Explicit public share capability', () => {
+  it('uses the requested share, never another share discovered from the page id', async () => {
+    const { service, shareRepo } = buildService({
+      shareById: { id: 'requested', workspaceId, mode: 'view' },
+      pageById: { ...page, workspaceId },
+    });
+    jest
+      .spyOn(service, 'getShareForPage')
+      .mockRejectedValue(new Error('must not discover another share'));
+    jest
+      .spyOn(service, 'updatePublicAttachments')
+      .mockResolvedValue({ type: 'doc' });
+    const result = await service.getSharedPage(
+      { shareId: 'requested', pageId: page.id },
+      workspaceId,
+    );
+    expect(result.share.mode).toBe('view');
+    expect(shareRepo.isPageWithinShareScope).toHaveBeenCalledWith(
+      result.share,
+      page.id,
+    );
+  });
+
+  it('rejects a valid page outside the requested share', async () => {
+    const { service } = buildService({
+      shareById: { id: 'requested', workspaceId, mode: 'edit' },
+      pageById: { ...page, workspaceId },
+      inScope: false,
+    });
+    await expect(
+      service.getSharedPage(
+        { shareId: 'requested', pageId: page.id },
+        workspaceId,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('rejects attachment mutations using a comment link', async () => {
+    const { service } = buildService({
+      guestCommentsEnabled: true,
+      shareById: { id: 'requested', workspaceId, mode: 'comment' },
+      pageById: { ...page, workspaceId },
+    });
+    await expect(
+      service.validateGuestEditAccess('requested', page.id, workspaceId),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('Public link revocation cannot be bypassed by page discovery', () => {
+  it('requires a share capability, even when the caller knows the public page id', async () => {
+    const { service, shareRepo } = buildService({
+      pageById: { ...page, workspaceId },
+    });
+    await expect(
+      service.getSharedPage({ pageId: page.id }, workspaceId),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(shareRepo.findById).not.toHaveBeenCalled();
   });
 });

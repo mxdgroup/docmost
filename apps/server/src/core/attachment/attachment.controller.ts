@@ -17,6 +17,9 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { ShareService } from '../share/share.service';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { SHARE_PUBLIC_THROTTLER } from '../../integrations/throttle/throttler-names';
 import { AttachmentService } from './services/attachment.service';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { FileInterceptor } from '../../common/interceptors/file.interceptor';
@@ -67,6 +70,7 @@ export class AttachmentController {
 
   constructor(
     private readonly attachmentService: AttachmentService,
+    private readonly shareService: ShareService,
     private readonly storageService: StorageService,
     private readonly workspaceAbility: WorkspaceAbilityFactory,
     private readonly spaceAbility: SpaceAbilityFactory,
@@ -78,6 +82,45 @@ export class AttachmentController {
     @Inject(AUDIT_SERVICE) private readonly auditService: IAuditService,
   ) {}
 
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ [SHARE_PUBLIC_THROTTLER]: { ttl: 60_000, limit: 10 } })
+  @HttpCode(HttpStatus.OK)
+  @Post('files/share-upload')
+  @UseInterceptors(FileInterceptor)
+  async uploadSharedFile(
+    @Req() req: any,
+    @Res() res: FastifyReply,
+    @AuthWorkspace() workspace: Workspace,
+    @Query('shareId') shareId: string,
+  ) {
+    if (!shareId) throw new BadRequestException('Share is required');
+    return this.uploadFile(req, res, null, workspace, shareId);
+  }
+
+  @Get('files/shared/:fileId/:fileName')
+  async getSharedFile(
+    @Req() req: FastifyRequest,
+    @Res() res: FastifyReply,
+    @AuthWorkspace() workspace: Workspace,
+    @Param('fileId') fileId: string,
+    @Query('shareId') shareId: string,
+  ) {
+    if (!shareId || !isValidUUID(fileId)) throw new NotFoundException();
+    const attachment = await this.attachmentRepo.findById(fileId);
+    if (
+      !attachment?.pageId ||
+      attachment.deletedAt ||
+      attachment.workspaceId !== workspace.id
+    )
+      throw new NotFoundException();
+    await this.shareService.validateGuestCommentAccess(
+      shareId,
+      attachment.pageId,
+      workspace.id,
+    );
+    return this.sendFileResponse(req, res, attachment, 'share');
+  }
+
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @Post('files/upload')
@@ -87,6 +130,7 @@ export class AttachmentController {
     @Res() res: FastifyReply,
     @AuthUser() user: User,
     @AuthWorkspace() workspace: Workspace,
+    shareId?: string,
   ) {
     const maxFileSize = bytes(this.environmentService.getFileUploadSizeLimit());
 
@@ -120,7 +164,15 @@ export class AttachmentController {
       throw new NotFoundException('Page not found');
     }
 
-    await this.pageAccessService.validateCanEdit(page, user);
+    const validateAccess = () =>
+      shareId
+        ? this.shareService.validateGuestEditAccess(
+            shareId,
+            page.id,
+            workspace.id,
+          )
+        : this.pageAccessService.validateCanEdit(page, user);
+    await validateAccess();
 
     const spaceId = page.spaceId;
 
@@ -134,7 +186,8 @@ export class AttachmentController {
         filePromise: file,
         pageId: pageId,
         spaceId: spaceId,
-        userId: user.id,
+        userId: user?.id ?? null,
+        validateAccess: shareId ? validateAccess : undefined,
         workspaceId: workspace.id,
         attachmentId: attachmentId,
       });
@@ -469,8 +522,12 @@ export class AttachmentController {
     req: FastifyRequest,
     res: FastifyReply,
     attachment: Attachment,
-    cacheScope: 'private' | 'public',
+    cacheScope: 'private' | 'public' | 'share',
   ) {
+    const cacheControl =
+      cacheScope === 'share'
+        ? 'private, no-store'
+        : `${cacheScope}, max-age=3600`;
     const fileSize = Number(attachment.fileSize);
     const rangeHeader = req.headers.range;
 
@@ -511,7 +568,7 @@ export class AttachmentController {
           'Content-Type': attachment.mimeType,
           'Content-Range': `bytes ${start}-${end}/${fileSize}`,
           'Content-Length': end - start + 1,
-          'Cache-Control': `${cacheScope}, max-age=3600`,
+          'Cache-Control': cacheControl,
         });
 
         return res.send(fileStream);
@@ -524,7 +581,7 @@ export class AttachmentController {
 
     res.headers({
       'Content-Type': attachment.mimeType,
-      'Cache-Control': `${cacheScope}, max-age=3600`,
+      'Cache-Control': cacheControl,
     });
 
     const isSvg = attachment.fileExt === '.svg';
