@@ -19,6 +19,9 @@ runs the two new fork migrations: guest page attribution and nullable attachment
 creators. No workspace users are created for guests. Follow the normal MXD image
 release process; this working-tree change alone does not update docs.mxd.digital.
 See [security notes](MXD-SECURITY-NOTES.md) for the permission boundaries and migration rollback behavior.
+Keep a fresh pre-upgrade dump and stopped-database volume snapshot. A rollback
+to mxd.8 requires restoring that database as well as repinning its image because
+its fork migrator does not recognize the two new migration filenames.
 
 ## Acceptance checks
 

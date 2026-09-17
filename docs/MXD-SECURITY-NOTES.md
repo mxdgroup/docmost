@@ -100,9 +100,10 @@ revive the old URL. Legacy URLs without a share key no longer resolve.
   the current share against the attachment's actual owner page and use no-store.
 - The attachment creator FK remains enforced but allows NULL for guests. This
   is a deliberate non-destructive constraint relaxation in the fork migration,
-  needed because the original column required a real user. Image rollback keeps
-  this nullable constraint; schema rollback refuses to fabricate owners or
-  delete guest uploads.
+  needed because the original column required a real user. Schema rollback
+  refuses to fabricate owners or delete guest uploads. Rolling back to a fork
+  image lacking these migration files requires the pre-upgrade database too:
+  the older fork migrator rejects the newer migration ledger (rehearsal verified).
 - Share records currently have no scheduled expiry field. Collaboration JWTs
   expire after ten minutes and expiry is enforced on active messages; the client
   renews its session before that deadline. Share deletion is link revocation.
