@@ -60,11 +60,11 @@ migration folder, and rejects out-of-order pending migrations. Therefore:
 - Schema changes are **additive only**: new tables, or nullable/defaulted columns on upstream
   tables. Never destructive alters.
 - **Rollback eras:** before the first fork migration runs in an environment, any image flip is a
-  complete rollback. After, fork↔fork image flips stay simple; rolling back to a *pure upstream*
-  image is schema-safe (additive columns are ignored) and ledger-safe (upstream's ledger was never
-  touched) — the `mxd_migration` table simply lies dormant. Fallback if the separate-table design
-  ever regresses: delete the fork rows from the shared ledger before booting upstream
-  (documented here so nobody re-derives it mid-incident).
+  complete rollback. Between fork images, an image flip works only when the older image contains
+  every migration recorded in `mxd_migration`. The 2026-09-17 rehearsal confirmed that mxd.8
+  rejects the two new guest-edit migration names; restore the pre-upgrade database with the old
+  image for a full rollback. Never delete ledger rows to force a downgrade. A *pure upstream*
+  image does not inspect `mxd_migration`; its boot compatibility still needs the test below.
 - The falsification test (every fork migration re-earns it): after the migration runs, the
   **pure upstream image must still boot** against the database.
 
