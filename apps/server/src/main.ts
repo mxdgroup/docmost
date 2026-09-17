@@ -13,6 +13,7 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyIp from 'fastify-ip';
 import { InternalLogFilter } from './common/logger/internal-log-filter';
 import { EnvironmentService } from './integrations/environment/environment.service';
+import { installIdentityHandoff } from './core/analytics/identity-handoff';
 import { resolveFrameHeader } from './common/helpers';
 
 async function bootstrap() {
@@ -53,6 +54,14 @@ async function bootstrap() {
   await app.register(fastifyCookie);
 
   const environmentService = app.get(EnvironmentService);
+  installIdentityHandoff(
+    app.getHttpAdapter().getInstance(),
+    environmentService.getIdentityParamSecret(),
+    environmentService.isHttps(),
+    Boolean(
+      environmentService.getPostHogKey() && environmentService.getPostHogHost(),
+    ),
+  );
   const frameHeader = resolveFrameHeader(
     environmentService.isIframeEmbedAllowed(),
     environmentService.getIframeAllowedOrigins(),

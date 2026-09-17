@@ -18,6 +18,6 @@ import { ShareCommenterService } from './commenter/share-commenter.service';
   ],
   controllers: [ShareController, ShareSeoController, ShareCommenterController],
   providers: [ShareService, ShareCommenterService],
-  exports: [ShareService],
+  exports: [ShareService, ShareCommenterService],
 })
 export class ShareModule {}
