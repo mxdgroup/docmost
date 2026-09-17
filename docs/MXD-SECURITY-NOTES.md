@@ -5,18 +5,23 @@ does not have (editable public links, guest comments). This records the threat
 model, the second-review findings and how each was resolved, and the residual
 risks an operator should know before enabling the feature flags.
 
-All elevated features are **off by default** behind `SHARE_EDIT_ENABLED` and
-`SHARE_GUEST_COMMENTS_ENABLED`. With the flags off, the fork is
-upstream-equivalent (verified on the release image: edit/mint/guest-comment all
-return 403).
+Public edit and comment capabilities are available by default. Operators can
+disable them using `SHARE_EDIT_ENABLED=false` and
+`SHARE_GUEST_COMMENTS_ENABLED=false`. Existing links are never upgraded to
+edit by this change; a page editor must explicitly select **Can edit**.
 
 ## Trust boundaries
 
 - **Anonymous edit session** (`SHARE_COLLAB` token → Hocuspocus websocket):
   the token carries no user id; the ws auth branch
   (`authentication.extension.ts`) re-validates the share, mode, page scope,
-  page-level restrictions, and the sharing kill switch on **every** (re)connect.
-  Bounded staleness after a revocation = token TTL (10 min).
+  page-level restrictions, token expiry, and the sharing kill switch on every
+  connection and **before every incoming message**. The awaited
+  `beforeHandleMessage` hook runs before Yjs applies updates, including initial
+  SyncStep2 uploads. Share updates/deletes also close matching active sessions
+  through the Redis document owner. No reconnect or token expiry is required
+  for write revocation. A browser heartbeat updates idle UI if notification
+  delivery fails; it is not an authorization mechanism.
 - **Guest comment** (`@Public()` endpoints under `/shares/comments`): gated by
   `validateGuestCommentAccess` (same ladder as the mint path); body content is
   sanitized server-side against an allowlist before persistence.
@@ -75,17 +80,32 @@ return 403).
 
 ## Revocation & the share-access model
 
-Docmost resolves a public share by **pageId**, not by the URL `key` — the key
-is effectively a cosmetic slug, and an old share URL auto-redirects to the
-current key. The fork does **not** change this. Consequences an operator must
-understand:
+Public page loading now requires the requested share key or ID, checks its
+scope, and never discovers a replacement share from a page ID. This includes
+linked-page previews and SEO metadata. Deleting and recreating a share does not
+revive the old URL. Legacy URLs without a share key no longer resolve.
 
-- The **only** reliable way to revoke a leaked edit/comment link is to
-  **delete the share** (which invalidates minting and guest comments
-  immediately). Lowering the mode (edit→comment→view) also removes the elevated
-  capability on the next reconnect.
-- Restricting the page (page permissions) also cuts off the public share
-  entirely (verified: restrict → share stops resolving, minting 403).
+- Deleting a share invalidates token minting, guest HTTP mutations and active
+  collaboration sessions. Lowering its mode immediately rejects further edits.
+- Restricting/deleting/moving a page outside the share or disabling sharing is
+  rechecked before subsequent messages and HTTP mutations.
+- Shared body content uses the normal Yjs persistence/history pipeline. A
+  signed temporary guest ID supplies distinct caret labels and a persisted
+  `pages.last_updated_by_guest` label; no fake users or workspace memberships.
+- Title changes use a narrowly scoped public endpoint with the same edit check.
+- Attachment uploads reuse the existing upload service, with share checks
+  before upload and before publishing the result. Guest replacements are staged
+  under a fresh storage key so revocation during streaming cannot overwrite the
+  old file. Other-page attachment IDs are rejected. Live attachment reads check
+  the current share against the attachment's actual owner page and use no-store.
+- The attachment creator FK remains enforced but allows NULL for guests. This
+  is a deliberate non-destructive constraint relaxation in the fork migration,
+  needed because the original column required a real user. Image rollback keeps
+  this nullable constraint; schema rollback refuses to fabricate owners or
+  delete guest uploads.
+- Share records currently have no scheduled expiry field. Collaboration JWTs
+  expire after ten minutes and expiry is enforced on active messages; the client
+  renews its session before that deadline. Share deletion is link revocation.
 
 ## Residual risks (know these before enabling flags)
 
