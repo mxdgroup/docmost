@@ -1,4 +1,7 @@
-import { authorizedUserMentions } from './persistence.extension';
+import {
+  authorizedUserMentions,
+  editorAttribution,
+} from './persistence.extension';
 
 const U1 = '00000000-0000-0000-0000-000000000001';
 const U2 = '00000000-0000-0000-0000-000000000002';
@@ -44,5 +47,22 @@ describe('authorizedUserMentions (anonymous mention-spoof guard)', () => {
     expect(authorizedUserMentions(batch, [U1])).toEqual([
       { creatorId: U1, entityId: U2, id: 'legit-by-U1' },
     ]);
+  });
+});
+
+describe('guest content attribution', () => {
+  it('records a guest without assigning a fake workspace user id', () => {
+    expect(
+      editorAttribution({ anonymousShare: { guestId: 'abc123-456' } }),
+    ).toEqual({ lastUpdatedById: null, lastUpdatedByGuest: 'Guest abc123' });
+  });
+  it('clears guest attribution on a subsequent member edit', () => {
+    expect(editorAttribution({ user: { id: U1 } })).toEqual({
+      lastUpdatedById: U1,
+      lastUpdatedByGuest: null,
+    });
+  });
+  it('leaves attribution unchanged for server-side comment mark maintenance', () => {
+    expect(editorAttribution({ user: null })).toEqual({});
   });
 });

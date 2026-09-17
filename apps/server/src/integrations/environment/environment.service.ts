@@ -219,17 +219,17 @@ export class EnvironmentService {
     return !this.isCloud();
   }
 
-  // MXD fork flags (default off — features ship dark; see MXD-FORK.md)
+  // Public capability switches. Links still require an explicit edit grant.
   isShareEditEnabled(): boolean {
     const value = this.configService
-      .get<string>('SHARE_EDIT_ENABLED', 'false')
+      .get<string>('SHARE_EDIT_ENABLED', 'true')
       .toLowerCase();
     return value === 'true';
   }
 
   isShareGuestCommentsEnabled(): boolean {
     const value = this.configService
-      .get<string>('SHARE_GUEST_COMMENTS_ENABLED', 'false')
+      .get<string>('SHARE_GUEST_COMMENTS_ENABLED', 'true')
       .toLowerCase();
     return value === 'true';
   }

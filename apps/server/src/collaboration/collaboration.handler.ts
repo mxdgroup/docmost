@@ -26,6 +26,25 @@ export class CollaborationHandler {
 
   getHandlers(hocuspocus: Hocuspocus) {
     return {
+      revokeShareSessions: async (
+        documentName: string,
+        payload: { shareId: string },
+      ) => {
+        const document = hocuspocus.documents.get(documentName);
+        for (const connection of document?.getConnections() ?? []) {
+          const principal = connection.context?.anonymousShare;
+          if (principal?.shareId !== payload.shareId) continue;
+          principal.revoked = true;
+          connection.readOnly = true;
+          connection.sendStateless(
+            JSON.stringify({ type: 'share.access-denied' }),
+          );
+          connection.close({
+            code: 4403,
+            reason: 'Public share access changed',
+          });
+        }
+      },
       alterState: async (documentName: string, payload: { pageId: string }) => {
         // dummy
         // this.logger.log('Processing', documentName, payload);
@@ -96,7 +115,12 @@ export class CollaborationHandler {
           { user },
           (doc) => {
             const fragment = doc.getXmlFragment('default');
-            removeYjsMarkByAttribute(fragment, 'comment', 'commentId', commentId);
+            removeYjsMarkByAttribute(
+              fragment,
+              'comment',
+              'commentId',
+              commentId,
+            );
           },
         );
       },

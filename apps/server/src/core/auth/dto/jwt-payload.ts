@@ -33,6 +33,7 @@ export type JwtShareCollabPayload = {
   pageId: string;
   workspaceId: string;
   type: 'share_collab';
+  guestId?: string;
 };
 
 // MXD: identifies a share-link commenter account. Honored ONLY by the public

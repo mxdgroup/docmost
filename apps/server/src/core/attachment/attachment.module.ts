@@ -1,3 +1,4 @@
+import { ShareModule } from '../share/share.module';
 import { Module } from '@nestjs/common';
 import { AttachmentService } from './services/attachment.service';
 import { AttachmentController } from './attachment.controller';
@@ -8,7 +9,13 @@ import { AttachmentProcessor } from './processors/attachment.processor';
 import { TokenModule } from '../auth/token.module';
 
 @Module({
-  imports: [StorageModule, UserModule, WorkspaceModule, TokenModule],
+  imports: [
+    ShareModule,
+    StorageModule,
+    UserModule,
+    WorkspaceModule,
+    TokenModule,
+  ],
   controllers: [AttachmentController],
   providers: [AttachmentService, AttachmentProcessor],
 })

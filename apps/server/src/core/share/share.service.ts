@@ -21,7 +21,8 @@ import { Node } from '@tiptap/pm/model';
 import { ShareRepo } from '@docmost/db/repos/share/share.repo';
 import { PagePermissionRepo } from '@docmost/db/repos/page/page-permission.repo';
 import { updateAttachmentAttr } from './share.util';
-import { Page } from '@docmost/db/types/entity.types';
+import { CollaborationGateway } from '../../collaboration/collaboration.gateway';
+import { Page, Share } from '@docmost/db/types/entity.types';
 import { validate as isValidUUID } from 'uuid';
 import { sql } from 'kysely';
 import { TransclusionService } from '../page/transclusion/transclusion.service';
@@ -34,6 +35,7 @@ import {
 } from './share-mode';
 import { EnvironmentService } from '../../integrations/environment/environment.service';
 import { ForbiddenException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 
 @Injectable()
 export class ShareService {
@@ -47,6 +49,7 @@ export class ShareService {
     private readonly tokenService: TokenService,
     private readonly transclusionService: TransclusionService,
     private readonly environmentService: EnvironmentService,
+    private readonly collaborationGateway: CollaborationGateway,
   ) {}
 
   // MXD: mode transitions above 'view' are gated by env flags so the fork
@@ -80,12 +83,13 @@ export class ShareService {
 
   async getShareTree(shareId: string, workspaceId: string) {
     const share = await this.shareRepo.findById(shareId);
-    if (!share || share.workspaceId !== workspaceId) {
+    if (!share || share.deletedAt || share.workspaceId !== workspaceId) {
       throw new NotFoundException('Share not found');
     }
 
-    const isRestricted =
-      await this.pagePermissionRepo.hasRestrictedAncestor(share.pageId);
+    const isRestricted = await this.pagePermissionRepo.hasRestrictedAncestor(
+      share.pageId,
+    );
     if (isRestricted) {
       throw new NotFoundException('Share not found');
     }
@@ -144,7 +148,8 @@ export class ShareService {
       if (updateShareDto.mode !== undefined) {
         this.assertModeAllowedByFlags(updateShareDto.mode);
       }
-      return this.shareRepo.updateShare(
+      const previous = await this.shareRepo.findById(shareId);
+      const updated = await this.shareRepo.updateShare(
         {
           includeSubPages: updateShareDto.includeSubPages,
           searchIndexing: updateShareDto.searchIndexing,
@@ -154,10 +159,42 @@ export class ShareService {
         },
         shareId,
       );
+      if (
+        previous &&
+        (updateShareDto.mode !== undefined ||
+          updateShareDto.includeSubPages !== undefined)
+      ) {
+        await this.revokeShareSessions(previous);
+      }
+      return updated;
     } catch (err) {
       if (err instanceof ForbiddenException) throw err;
       this.logger.error(err);
       throw new BadRequestException('Failed to update share');
+    }
+  }
+
+  async revokeShareSessions(share: Share): Promise<void> {
+    // Route through the existing Redis document owner, including a separately
+    // deployed collaboration service. Message-time checks remain authoritative
+    // if notification delivery fails.
+    try {
+      const pages = share.includeSubPages
+        ? await this.pageRepo.getPageAndDescendants(share.pageId, {
+            includeContent: false,
+          })
+        : [{ id: share.pageId }];
+      await Promise.all(
+        pages.map((page) =>
+          this.collaborationGateway.handleYjsEvent(
+            'revokeShareSessions',
+            `page.${page.id}`,
+            { shareId: share.id },
+          ),
+        ),
+      );
+    } catch (error) {
+      this.logger.warn(`Unable to notify share sessions: ${share.id}`);
     }
   }
 
@@ -172,7 +209,11 @@ export class ShareService {
     shareIdOrKey: string,
     pageId: string,
     workspaceId: string,
-  ): Promise<{ token: string; readOnly: boolean }> {
+  ): Promise<{
+    token: string;
+    readOnly: boolean;
+    guest: { id: string; name: string };
+  }> {
     const share = await this.shareRepo.findById(shareIdOrKey);
     if (!share || share.workspaceId !== workspaceId || share.deletedAt) {
       throw new NotFoundException('Share not found');
@@ -212,12 +253,31 @@ export class ShareService {
       throw new ForbiddenException('Page is restricted');
     }
 
+    const guestId = randomUUID();
+    const guest = { id: guestId, name: `Guest ${guestId.slice(0, 6)}` };
     const token = await this.tokenService.generateShareCollabToken({
+      guestId: guest.id,
       shareId: share.id,
       pageId: page.id,
       workspaceId,
     });
-    return { token, readOnly: mode === 'readonly' };
+    return { token, readOnly: mode === 'readonly', guest };
+  }
+
+  async validateGuestEditAccess(
+    shareId: string,
+    pageId: string,
+    workspaceId: string,
+  ) {
+    const access = await this.validateGuestCommentAccess(
+      shareId,
+      pageId,
+      workspaceId,
+    );
+    if (!shareModeAllows(access.share.mode, ShareMode.EDIT)) {
+      throw new ForbiddenException('This link does not allow editing');
+    }
+    return access;
   }
 
   // MXD: shared gatekeeper for guest comment read/write on a shared page.
@@ -277,26 +337,32 @@ export class ShareService {
     return { share, page };
   }
 
-
   async getSharedPage(dto: ShareInfoDto, workspaceId: string) {
-    const share = await this.getShareForPage(dto.pageId, workspaceId);
+    if (!dto.shareId) throw new NotFoundException('Share not found');
+    const share = await this.shareRepo.findById(dto.shareId);
 
-    if (!share) {
+    if (!share || share.workspaceId !== workspaceId || share.deletedAt) {
       throw new NotFoundException('Shared page not found');
     }
 
-    const page = await this.pageRepo.findById(dto.pageId, {
+    const page = await this.pageRepo.findById(dto.pageId || share.pageId, {
       includeContent: true,
       includeCreator: true,
     });
 
-    if (!page || page.deletedAt) {
+    if (
+      !page ||
+      page.deletedAt ||
+      page.workspaceId !== workspaceId ||
+      !(await this.shareRepo.isPageWithinShareScope(share, page.id))
+    ) {
       throw new NotFoundException('Shared page not found');
     }
 
     // Block access to restricted pages
-    const isRestricted =
-      await this.pagePermissionRepo.hasRestrictedAncestor(page.id);
+    const isRestricted = await this.pagePermissionRepo.hasRestrictedAncestor(
+      page.id,
+    );
     if (isRestricted) {
       throw new NotFoundException('Shared page not found');
     }
@@ -325,6 +391,7 @@ export class ShareService {
             'shares.includeSubPages',
             'shares.searchIndexing',
             'shares.mode',
+            'shares.deletedAt',
             'shares.creatorId',
             'shares.spaceId',
             'shares.workspaceId',
@@ -350,6 +417,7 @@ export class ShareService {
                   's.includeSubPages',
                   's.searchIndexing',
                   's.mode',
+                  's.deletedAt',
                   's.creatorId',
                   's.spaceId',
                   's.workspaceId',
@@ -366,7 +434,7 @@ export class ShareService {
       .limit(1)
       .executeTakeFirst();
 
-    if (!share || share.workspaceId !== workspaceId) {
+    if (!share || share.deletedAt || share.workspaceId !== workspaceId) {
       return undefined;
     }
 
@@ -472,7 +540,7 @@ export class ShareService {
     workspaceId: string,
   ): Promise<{ items: TransclusionLookup[] }> {
     const share = await this.shareRepo.findById(shareId);
-    if (!share || share.workspaceId !== workspaceId) {
+    if (!share || share.deletedAt || share.workspaceId !== workspaceId) {
       throw new NotFoundException('Share not found');
     }
     const sharingAllowed = await this.isSharingAllowed(

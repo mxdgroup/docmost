@@ -116,7 +116,11 @@ export class CollaborationGateway {
 
       // Forward close events
       client.on('close', (code: number, reason: Buffer) => {
-        this.redisSync!.onSocketClose(socketId, code, reason.buffer as ArrayBuffer);
+        this.redisSync!.onSocketClose(
+          socketId,
+          code,
+          reason.buffer as ArrayBuffer,
+        );
       });
 
       // Forward pong events for keepalive
@@ -142,7 +146,15 @@ export class CollaborationGateway {
     documentName: string,
     payload: Parameters<CollabEventHandlers[TName]>[1],
   ) {
-    return this.redisSync?.handleEvent(eventName, documentName, payload);
+    if (this.redisSync)
+      return this.redisSync.handleEvent(eventName, documentName, payload);
+    const handler = this.collabEventsService.getHandlers(this.hocuspocus)[
+      eventName
+    ];
+    return (handler as (name: string, data: any) => Promise<void>)(
+      documentName,
+      payload,
+    );
   }
 
   openDirectConnection(documentName: string, context?: any) {

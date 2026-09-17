@@ -21,6 +21,7 @@ import { ShareService } from './share.service';
 import {
   CreateShareDto,
   ShareCollabTokenDto,
+  ShareTitleDto,
   ShareCommentsListDto,
   ShareGuestCommentDto,
   ShareGuestCommentOwnedDto,
@@ -157,6 +158,31 @@ export class ShareController {
     return result;
   }
 
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ [SHARE_PUBLIC_THROTTLER]: { ttl: 60_000, limit: 60 } })
+  @HttpCode(HttpStatus.OK)
+  @Post('/title')
+  async updateSharedTitle(
+    @Body() dto: ShareTitleDto,
+    @AuthWorkspace() workspace: Workspace,
+  ) {
+    const { page } = await this.shareService.validateGuestEditAccess(
+      dto.shareId,
+      dto.pageId,
+      workspace.id,
+    );
+    await this.pageRepo.updatePage(
+      {
+        title: dto.title.trim(),
+        lastUpdatedById: null,
+        lastUpdatedByGuest: 'Guest',
+      },
+      page.id,
+    );
+    return { title: dto.title.trim() };
+  }
+
   // MXD: guest comment listing on a shared page (comment/edit modes).
   @Public()
   @UseGuards(ThrottlerGuard)
@@ -203,7 +229,9 @@ export class ShareController {
       req,
       workspace.id,
     );
-    const guestName = commenter ? commenter.name : parseGuestName(dto.guestName);
+    const guestName = commenter
+      ? commenter.name
+      : parseGuestName(dto.guestName);
 
     const { comment, guestToken } =
       await this.commentService.createGuestComment(
@@ -440,7 +468,6 @@ export class ShareController {
     return this.shareService.updateShare(share.id, updateShareDto);
   }
 
-
   @HttpCode(HttpStatus.OK)
   @Post('delete')
   async delete(@Body() shareIdDto: ShareIdDto, @AuthUser() user: User) {
@@ -459,6 +486,7 @@ export class ShareController {
     await this.pageAccessService.validateCanEdit(page, user);
 
     await this.shareRepo.deleteShare(share.id);
+    await this.shareService.revokeShareSessions(share);
 
     this.auditService.log({
       event: AuditEvent.SHARE_DELETED,
@@ -520,7 +548,9 @@ function parseGuestContent(content: string): any {
 }
 
 function parseGuestName(name: string): string {
-  const guestName = String(name ?? '').trim().slice(0, 50);
+  const guestName = String(name ?? '')
+    .trim()
+    .slice(0, 50);
   if (!guestName) {
     throw new BadRequestException('Display name is required');
   }

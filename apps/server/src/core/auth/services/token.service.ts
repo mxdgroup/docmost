@@ -86,11 +86,13 @@ export class TokenService {
 
   // MXD: short-lived, share-scoped, carries NO user id. Reconnects re-mint.
   async generateShareCollabToken(opts: {
+    guestId?: string;
     shareId: string;
     pageId: string;
     workspaceId: string;
   }): Promise<string> {
     const payload: JwtShareCollabPayload = {
+      guestId: opts.guestId,
       shareId: opts.shareId,
       pageId: opts.pageId,
       workspaceId: opts.workspaceId,
