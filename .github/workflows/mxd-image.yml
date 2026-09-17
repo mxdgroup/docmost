@@ -65,6 +65,7 @@ jobs:
         run: >-
           pnpm jest
           src/core/share
+          src/core/analytics
           src/collaboration/extensions/authentication.extension.spec.ts
           src/collaboration/extensions/persistence.extension.spec.ts
           src/collaboration/extensions/public-share-collaboration.spec.ts
@@ -73,6 +74,10 @@ jobs:
           src/core/mxd-data
           src/integrations/mail/mail.service.spec.ts
           --ci
+
+      - name: Analytics identity and privacy tests
+        working-directory: apps/client
+        run: pnpm vitest run src/features/analytics
 
   mxd-db-check:
     # DB-backed verification of the data-platform migration + repo scoping

@@ -275,6 +275,10 @@ export class EnvironmentService {
     return disable === 'true';
   }
 
+  getIdentityParamSecret(): string {
+    return this.configService.get<string>('IDENTITY_PARAM_SECRET') || '';
+  }
+
   getPostHogHost(): string {
     return this.configService.get<string>('POSTHOG_HOST');
   }

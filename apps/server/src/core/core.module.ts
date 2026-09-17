@@ -24,10 +24,12 @@ import { WatcherModule } from './watcher/watcher.module';
 import { FavoriteModule } from './favorite/favorite.module';
 import { SessionModule } from './session/session.module';
 import { MxdDataModule } from './mxd-data/mxd-data.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { ClsMiddleware } from 'nestjs-cls';
 
 @Module({
   imports: [
+    AnalyticsModule,
     UserModule,
     AuthModule,
     WorkspaceModule,

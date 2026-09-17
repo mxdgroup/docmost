@@ -1,3 +1,8 @@
+import {
+  captureApiAction,
+  refreshAnalyticsIdentity,
+  resetAnalyticsIdentity,
+} from "@/features/analytics/docs-analytics";
 import axios, { AxiosInstance } from "axios";
 import APP_ROUTE from "@/lib/app-route.ts";
 import { isCloud } from "@/lib/config.ts";
@@ -9,6 +14,12 @@ const api: AxiosInstance = axios.create({
 
 api.interceptors.response.use(
   (response) => {
+    const path = response.config.url?.replace(/^\/api/, "").split("?")[0];
+    if (path) captureApiAction(path);
+    if (["/auth/logout", "/shares/commenter/sign-out"].includes(path))
+      resetAnalyticsIdentity();
+    else if (["/auth/login", "/shares/commenter/verify"].includes(path))
+      void refreshAnalyticsIdentity();
     // we need the response headers for these endpoints
     const exemptEndpoints = [
       "/api/pages/export",
