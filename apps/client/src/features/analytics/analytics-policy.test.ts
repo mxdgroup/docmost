@@ -7,7 +7,7 @@ import {
 } from "./analytics-policy";
 
 describe("Docs analytics privacy boundary", () => {
-  it("keeps the page reference without the share credential or document title", () => {
+  it("keeps route categories and page references as separate grouping metadata", () => {
     expect(
       routeProperties("/share/g6qbcygjqy/p/private-client-brief-nDJwhZWybH"),
     ).toEqual({
@@ -22,6 +22,21 @@ describe("Docs analytics privacy boundary", () => {
     expect(routeProperties("/password-reset/private-token").route).toBe(
       "/password-reset/:id",
     );
+  });
+  it.each([
+    "https://docs.mxd.digital/s/marketing/p/kitchens-writing-brief-nDJwhZWybH?view=outline#section-2",
+    "https://docs.mxd.digital/share/g6qbcygjqy/p/kitchens-writing-brief-nDJwhZWybH?view=outline#section-2",
+    "https://docs.mxd.digital/settings/account/preferences",
+  ])("records the full visited URL: %s", (url) => {
+    const result = redactEvent(
+      { event: "$pageview", properties: {} },
+      url,
+      false,
+    );
+    expect(result.properties).toMatchObject({
+      $current_url: url,
+      $pathname: new URL(url).pathname,
+    });
   });
   it("removes handoff parameters without affecting document access", () => {
     expect(
@@ -60,7 +75,7 @@ describe("Docs analytics privacy boundary", () => {
     };
     const result = redactEvent(
       input,
-      "https://docs.mxd.digital/share/secret/p/private-title-nDJwhZWybH?password=secret#token",
+      "https://docs.mxd.digital/share/g6qbcygjqy/p/writing-brief-nDJwhZWybH?view=outline#section-2",
       false,
     );
     const serialized = JSON.stringify(result);
@@ -75,7 +90,7 @@ describe("Docs analytics privacy boundary", () => {
     ])
       expect(serialized).not.toContain(blocked);
     expect(result.properties.$current_url).toBe(
-      "https://docs.mxd.digital/share/:share/p/:page",
+      "https://docs.mxd.digital/share/g6qbcygjqy/p/writing-brief-nDJwhZWybH?view=outline#section-2",
     );
     expect(result.properties.$set).toEqual({
       email: "reader@example.com",

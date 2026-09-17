@@ -40,8 +40,12 @@ its inherited destination allowlist; no Signal deployment change is required.
 ## What is measured
 
 Every event carries `surface=docs`, `environment`, a route category and area.
-Page visits include the opaque page slug ID (`page_ref`) so activity can be
-associated with a document without sending its title, share credential or URL.
+Page visits include the **full visited URL** in `$current_url` (path, query string
+and fragment) and the actual path in `$pathname`, as requested by MxD. This keeps
+PostHog's pageview links useful and distinguishes individual documents in page
+reports. Shared URLs include their share key. The separate `route` property is a
+category for aggregation; `page_ref` is the stable page slug ID. These grouping
+properties must never replace `$current_url` or `$pathname`.
 Actions cover editing activity (once per 30 seconds), successful page mutations,
 searches, comment changes, sharing changes and uploads. `docs_edit_started`
 means local editing activity, not confirmation of a completed save.
@@ -49,9 +53,10 @@ means local editing activity, not confirmation of a completed save.
 Autocapture, session replay, heatmaps, performance/network capture, exceptions,
 surveys and external SDK extensions are disabled. An event/property allowlist
 in `before_send` filters SDK defaults, sibling-site persistence, top-level and
-nested person properties. URLs become route templates; query strings, fragments,
-share keys, titles, document/comment text, search terms and phone numbers are
-excluded. Person properties are limited to email/name and first-seen surface.
+nested person properties. Full navigation URLs are retained, including their
+page-title slugs and query values. Document/comment bodies, captured DOM text,
+separate search-text properties and phone numbers remain excluded. Person
+properties are limited to email/name and first-seen surface.
 `Referrer-Policy` protects cross-origin transport metadata, including on shares.
 
 The shared `mxd_consent` cookie is read before identification and every capture.
@@ -70,9 +75,11 @@ and SDK initialization. Both suites run in the fork CI workflow.
 After deploy, verify the proxy/project configuration, a signed handoff with the
 query removed, rejected tampering, authenticated identity precedence, and pageview
 payloads on a disposable document. Do not record production document bodies or
-access tokens in test reports. PostHog events can be filtered by `surface=docs`
-and `environment=production`, then inspected by person, event, and `page_ref`.
+authentication credentials in test reports. PostHog events can be filtered by
+`surface=docs` and `environment=production`, then inspected by person, event, and
+`page_ref`.
 
 Disable capture by unsetting POSTHOG_KEY and recreating the app container. A
-rollback from mxd.10 to mxd.9 is an image/config flip because no migrations were
-added here; older migration-era rollback requirements remain in MXD-FORK.md.
+rollback between mxd.11, mxd.10 and mxd.9 is an image/config flip because no
+migrations were added in these releases; older migration-era rollback
+requirements remain in MXD-FORK.md.

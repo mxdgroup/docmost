@@ -1,4 +1,4 @@
-// Only route categories and opaque page references leave Docs, never titles or tokens.
+// Route categories supplement the full visited URL; they are not link targets.
 export function routeProperties(pathname: string) {
   const page = pathname.match(/\/p\/[^/]*-([A-Za-z0-9]{10,12})\/?$/)?.[1];
   const shared = pathname.startsWith("/share/");
@@ -179,8 +179,8 @@ export function redactEvent<
     properties: {
       ...properties,
       ...route,
-      $current_url: location.origin + route.route,
-      $pathname: route.route,
+      $current_url: location.href,
+      $pathname: location.pathname,
       $host: location.host,
     },
   } as unknown as T;
