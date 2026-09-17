@@ -14,6 +14,7 @@ export interface IPage {
   isLocked: boolean;
   isBase: boolean;
   lastUpdatedById: string;
+  lastUpdatedByGuest?: string | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date;

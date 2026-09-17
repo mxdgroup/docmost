@@ -46,14 +46,14 @@ export function isCloud(): boolean {
 // MXD fork flags. UI-visibility only — the server enforces.
 export function isShareEditEnabled(): boolean {
   if (import.meta.env.DEV) {
-    return castToBoolean(process.env.SHARE_EDIT_ENABLED);
+    return castToBoolean(process.env.SHARE_EDIT_ENABLED ?? "true");
   }
   return castToBoolean(getConfigValue("SHARE_EDIT_ENABLED"));
 }
 
 export function isShareGuestCommentsEnabled(): boolean {
   if (import.meta.env.DEV) {
-    return castToBoolean(process.env.SHARE_GUEST_COMMENTS_ENABLED);
+    return castToBoolean(process.env.SHARE_GUEST_COMMENTS_ENABLED ?? "true");
   }
   return castToBoolean(getConfigValue("SHARE_GUEST_COMMENTS_ENABLED"));
 }
@@ -81,6 +81,18 @@ export function getSpaceUrl(spaceSlug: string) {
 
 export function getFileUrl(src: string) {
   if (!src) return src;
+  const shareKey = window.location.pathname.match(/^\/share\/([^/]+)\//)?.[1];
+  // Resolve at render time only: never write share credentials into the Yjs doc.
+  if (shareKey && /^\/(?:api\/)?files\/[0-9a-f-]+\//i.test(src)) {
+    const filePath = src.replace(/^\/(?:api\/)?files\//, "/files/shared/");
+    const separator = filePath.includes("?") ? "&" : "?";
+    return (
+      getBackendUrl() +
+      filePath +
+      separator +
+      `shareId=${encodeURIComponent(decodeURIComponent(shareKey))}`
+    );
+  }
   if (src.startsWith("http")) return src;
   if (src.startsWith("/api/")) {
     // Remove the '/api' prefix

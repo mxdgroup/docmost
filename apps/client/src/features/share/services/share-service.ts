@@ -54,18 +54,33 @@ export async function deleteShare(shareId: string): Promise<void> {
 export async function getShareCollabToken(
   shareId: string,
   pageId: string,
-): Promise<{ token: string; readOnly: boolean }> {
-  const req = await api.post<{ token: string; readOnly: boolean }>("/shares/collab-token", {
+): Promise<{
+  token: string;
+  readOnly: boolean;
+  guest: { id: string; name: string };
+}> {
+  const req = await api.post<{
+    token: string;
+    readOnly: boolean;
+    guest: { id: string; name: string };
+  }>("/shares/collab-token", {
     shareId,
     pageId,
   });
   return req.data;
 }
 
-
 export async function getSharedPageTree(
   shareId: string,
 ): Promise<ISharedPageTree> {
   const req = await api.post<ISharedPageTree>("/shares/tree", { shareId });
   return req.data;
+}
+
+export async function updateSharedTitle(
+  shareId: string,
+  pageId: string,
+  title: string,
+): Promise<void> {
+  await api.post("/shares/title", { shareId, pageId, title });
 }

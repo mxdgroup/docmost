@@ -20,14 +20,28 @@ import { TextAlignmentSelector } from "./text-alignment-selector";
 import {
   draftCommentIdAtom,
   showCommentPopupAtom,
+  showReadOnlyCommentPopupAtom,
+  readOnlyCommentDataAtom,
+  ReadOnlyCommentData,
 } from "@/features/comment/atoms/comment-atom";
-import { useAtom, useAtomValue } from "jotai";
+import { useAtom, useAtomValue, useSetAtom, PrimitiveAtom } from "jotai";
+import { getRelativeSelection, ySyncPluginKey } from "@tiptap/y-tiptap";
 import { v7 as uuid7 } from "uuid";
-import { isCellSelection, isEditorReady, isTextSelected } from "@docmost/editor-ext";
+import {
+  isCellSelection,
+  isEditorReady,
+  isTextSelected,
+} from "@docmost/editor-ext";
 import { LinkSelector } from "@/features/editor/components/bubble-menu/link-selector.tsx";
 import { useTranslation } from "react-i18next";
-import { showAiMenuAtom, showLinkMenuAtom } from "@/features/editor/atoms/editor-atoms";
-import { userAtom, workspaceAtom } from "@/features/user/atoms/current-user-atom";
+import {
+  showAiMenuAtom,
+  showLinkMenuAtom,
+} from "@/features/editor/atoms/editor-atoms";
+import {
+  userAtom,
+  workspaceAtom,
+} from "@/features/user/atoms/current-user-atom";
 
 export interface BubbleMenuItem {
   name: string;
@@ -39,10 +53,15 @@ export interface BubbleMenuItem {
 type EditorBubbleMenuProps = Omit<BubbleMenuProps, "children" | "editor"> & {
   editor: Editor | null;
   templateMode?: boolean;
+  publicShare?: boolean;
 };
 
 export const EditorBubbleMenu: FC<EditorBubbleMenuProps> = (props) => {
-  const { templateMode = false } = props;
+  const { templateMode = false, publicShare = false } = props;
+  const setGuestCommentData = useSetAtom(
+    readOnlyCommentDataAtom as PrimitiveAtom<ReadOnlyCommentData | null>,
+  );
+  const [, setGuestCommentPopup] = useAtom(showReadOnlyCommentPopupAtom);
   const { t } = useTranslation();
   const [showAiMenu, setShowAiMenu] = useAtom(showAiMenuAtom);
   const [showCommentPopup, setShowCommentPopup] = useAtom(showCommentPopupAtom);
@@ -124,6 +143,19 @@ export const EditorBubbleMenu: FC<EditorBubbleMenuProps> = (props) => {
     name: "Comment",
     isActive: () => editorState?.isComment,
     command: () => {
+      if (publicShare) {
+        const editor = props.editor;
+        const binding = ySyncPluginKey.getState(editor.state)?.binding;
+        if (!binding) return;
+        const selection = getRelativeSelection(binding, editor.state);
+        const { from, to } = editor.state.selection;
+        setGuestCommentData({
+          yjsSelection: { anchor: selection.anchor, head: selection.head },
+          selectedText: editor.state.doc.textBetween(from, to),
+        });
+        setGuestCommentPopup(true);
+        return;
+      }
       const commentId = uuid7();
 
       props.editor.chain().focus().setCommentDecoration().run();
@@ -177,7 +209,7 @@ export const EditorBubbleMenu: FC<EditorBubbleMenuProps> = (props) => {
       style={{ zIndex: 199, position: "relative" }}
     >
       <div className={classes.bubbleMenu}>
-        {isGenerativeAiEnabled && (
+        {!publicShare && isGenerativeAiEnabled && (
           <>
             <Button
               variant="default"
@@ -193,7 +225,7 @@ export const EditorBubbleMenu: FC<EditorBubbleMenuProps> = (props) => {
             <div className={classes.divider} />
           </>
         )}
-        {!editorToolbarEnabled && (
+        {(publicShare || !editorToolbarEnabled) && (
           <>
             <NodeSelector
               editor={props.editor}
@@ -226,7 +258,9 @@ export const EditorBubbleMenu: FC<EditorBubbleMenuProps> = (props) => {
                     aria-label={t(item.name)}
                     className={clsx({ [classes.active]: item.isActive() })}
                     style={{ border: "none" }}
-                    onClick={() => isEditorReady(props.editor) && item.command()}
+                    onClick={() =>
+                      isEditorReady(props.editor) && item.command()
+                    }
                   >
                     <item.icon style={{ width: rem(16) }} stroke={2} />
                   </ActionIcon>
@@ -256,7 +290,9 @@ export const EditorBubbleMenu: FC<EditorBubbleMenuProps> = (props) => {
               radius="6px"
               aria-label={t(commentItem.name)}
               style={{ border: "none" }}
-              onClick={() => isEditorReady(props.editor) && commentItem.command()}
+              onClick={() =>
+                isEditorReady(props.editor) && commentItem.command()
+              }
             >
               <IconMessage size={16} stroke={2} />
             </ActionIcon>
